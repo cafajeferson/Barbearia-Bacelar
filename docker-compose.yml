@@ -3,7 +3,11 @@
 # Coolify tomaria as portas 80/443 pra si e derrubaria eles). O nginx já
 # existente na VPS faz o proxy reverso pra este container, num bloco de
 # site novo (ver deploy/nginx.example.conf e deploy/GUIA-DEPLOY.md passo 8).
-# Postgres/Auth/Storage ficam no Supabase Cloud, fora deste compose.
+# Postgres/Auth/Storage do APP ficam no Supabase Cloud, fora deste compose
+# — o "postgres" aqui embaixo é só pro estado interno da Evolution API
+# (instâncias/histórico de mensagens), que essa versão exige de verdade
+# (não tem mais um modo "sem banco", ao contrário do que a doc mais antiga
+# sugeria) — completamente separado dos dados da barbearia.
 services:
   app:
     build:
@@ -37,9 +41,30 @@ services:
       # substituição de variável do compose, não hardcoded. Rode com
       # `docker compose --env-file .env.production up -d --build`.
       - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
-      - DATABASE_ENABLED=false
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://evolution:${EVOLUTION_DB_PASSWORD}@evolution-db:5432/evolution
       - CACHE_REDIS_ENABLED=false
+      - CACHE_LOCAL_ENABLED=true
       - QRCODE_LIMIT=5
+    depends_on:
+      evolution-db:
+        condition: service_healthy
+
+  evolution-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=evolution
+      - POSTGRES_PASSWORD=${EVOLUTION_DB_PASSWORD}
+      - POSTGRES_DB=evolution
+    volumes:
+      - evolution_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
   evolution_instances:
+  evolution_db_data:
