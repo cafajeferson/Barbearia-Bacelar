@@ -4,16 +4,11 @@
 #
 # Node 22, não 20: @supabase/realtime-js, @supabase/storage-js e
 # @supabase/supabase-js exigem node >=22 (engines). slim (Debian/glibc) em
-# vez de alpine só por preferência, não é a causa de nada abaixo (testado
-# nas duas). `npm install -g npm@11` antes do ci: o package-lock.json foi
-# gerado com npm 11 localmente, e mesmo o npm 10.9.8 que vem com node:22
-# rejeita o ci reclamando de dependências opcionais ausentes
-# (@emnapi/core, @emnapi/runtime) — formato de lock file mudou entre
-# versões do npm. Fixar a versão do npm evita esse descompasso de vez.
+# vez de alpine só por preferência, não é causa de nada aqui (testado nas
+# duas).
 
 FROM node:22-slim AS deps
 WORKDIR /app
-RUN npm install -g npm@11
 COPY package.json package-lock.json ./
 RUN npm ci
 
