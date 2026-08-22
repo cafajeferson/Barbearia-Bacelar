@@ -16,9 +16,20 @@ export type AuthenticatedContext = AppContext & {
  */
 const fetchCurrentUser = cache(async () => {
   const supabase = await createSupabaseServerClient();
+  // getSession() (não getUser()) por velocidade: getUser() faz uma chamada
+  // de rede pro servidor do Supabase Auth em TODA Server Action/página —
+  // com o Supabase em us-east-1 e o app no Brasil, isso é a maior fonte de
+  // lentidão sentida em qualquer clique. getSession() só decodifica o JWT
+  // localmente (assinatura ainda validada, não dá pra forjar sem o
+  // segredo). O que se perde: revogação feita DIRETO no painel do
+  // Supabase (fora do app) só valeria a partir da expiração do JWT, não
+  // instantaneamente — mas a via normal de bloquear alguém (desativar
+  // profissional/cliente aqui no app) já é pega na hora pela consulta a
+  // "active" logo abaixo, que roda sempre, com dado fresco do banco.
   const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
+  const authUser = session?.user ?? null;
   if (!authUser) return null;
 
   return withAppContext({ role: "ADMIN", userId: null }, (tx) =>
@@ -39,13 +50,11 @@ const fetchCurrentUser = cache(async () => {
 /**
  * Ponto único de verdade para "quem está autenticado agora".
  *
- * Não confia só no JWT do Supabase: `supabase.auth.getUser()` já revalida
- * a sessão contra o servidor do Supabase Auth (não é um simples decode),
- * mas quem manda em role/professionalId/clientId é sempre esta consulta ao
- * banco — nunca o app_metadata do token, que o middleware usa (edge-safe,
- * sem tocar Prisma) mas o resto do app não deveria confiar cegamente. Como
- * essa consulta já roda em toda chamada, `active=false` (ver
- * deactivateProfessional/bloquear cliente) já barra o acesso na hora —
+ * Não confia no app_metadata do JWT (que o middleware usa, edge-safe, sem
+ * tocar Prisma) pra decidir role/professionalId/clientId — isso sempre
+ * vem de uma consulta fresca ao banco aqui embaixo. Como essa consulta já
+ * roda em toda chamada, `active=false` (ver deactivateProfessional/
+ * bloquear cliente) já barra o acesso na hora —
  * não precisa mais comparar tokenVersion feito no NextAuth (a coluna
  * continua existindo, é só que deixou de ser a fonte da checagem).
  *
