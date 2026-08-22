@@ -4,10 +4,20 @@ import { withAppContext } from "../src/server/db/context";
 import { syncUsersToSupabaseAuth, isSupabaseConfigured } from "../scripts/lib/syncUsersToSupabaseAuth";
 
 const DEMO_PASSWORD = "senha123";
+const ADMIN_CTX = { role: "ADMIN" as const, userId: null };
 
+/**
+ * Cada seção roda em seu próprio withAppContext (transação/conexão
+ * separada) em vez de tudo numa transação só — muitas operações Prisma em
+ * sequência dentro de UMA transação longa contra o pooler do Supabase
+ * (Supavisor) se mostrou instável (RLS falhando ou retorno sem `id` de
+ * forma não-determinística entre execuções, mesmo com `pgbouncer=true`).
+ * Transações curtas e independentes são o padrão já usado no resto do
+ * projeto por motivo parecido — ver appointments/service.ts.
+ */
 async function main() {
-  await withAppContext({ role: "ADMIN", userId: null }, async (tx) => {
-    const unit = await tx.unit.upsert({
+  const unit = await withAppContext(ADMIN_CTX, (tx) =>
+    tx.unit.upsert({
       where: { id: "00000000-0000-0000-0000-000000000001" },
       update: {},
       create: {
@@ -17,9 +27,11 @@ async function main() {
         phone: "(81) 90000-0000",
         active: true,
       },
-    });
+    }),
+  );
 
-    const adminUser = await tx.user.upsert({
+  await withAppContext(ADMIN_CTX, (tx) =>
+    tx.user.upsert({
       where: { email: "admin@bacelar.dev" },
       update: { name: "Jeferson Soares" },
       create: {
@@ -28,9 +40,11 @@ async function main() {
         phone: "(81) 90000-0001",
         role: "ADMIN",
       },
-    });
+    }),
+  );
 
-    const professionalUser = await tx.user.upsert({
+  const professionalUser = await withAppContext(ADMIN_CTX, (tx) =>
+    tx.user.upsert({
       where: { email: "profissional@bacelar.dev" },
       update: {},
       create: {
@@ -38,9 +52,11 @@ async function main() {
         phone: "(81) 90000-0002",
         role: "PROFESSIONAL",
       },
-    });
+    }),
+  );
 
-    const professional = await tx.professional.upsert({
+  const professional = await withAppContext(ADMIN_CTX, (tx) =>
+    tx.professional.upsert({
       where: { userId: professionalUser.id },
       update: {},
       create: {
@@ -49,18 +65,22 @@ async function main() {
         color: "#F5B301",
         title: "Barbeiro",
       },
-    });
+    }),
+  );
 
-    await tx.professionalUnit.upsert({
+  await withAppContext(ADMIN_CTX, (tx) =>
+    tx.professionalUnit.upsert({
       where: {
         professionalId_unitId: { professionalId: professional.id, unitId: unit.id },
       },
       update: {},
       create: { professionalId: professional.id, unitId: unit.id },
-    });
+    }),
+  );
 
-    for (let weekday = 1; weekday <= 6; weekday++) {
-      await tx.weeklyAvailability.upsert({
+  for (let weekday = 1; weekday <= 6; weekday++) {
+    await withAppContext(ADMIN_CTX, (tx) =>
+      tx.weeklyAvailability.upsert({
         where: {
           professionalId_weekday_startTime: {
             professionalId: professional.id,
@@ -75,10 +95,12 @@ async function main() {
           startTime: "09:00",
           endTime: "19:00",
         },
-      });
-    }
+      }),
+    );
+  }
 
-    const clientUser = await tx.user.upsert({
+  const clientUser = await withAppContext(ADMIN_CTX, (tx) =>
+    tx.user.upsert({
       where: { email: "cliente@bacelar.dev" },
       update: {},
       create: {
@@ -86,9 +108,11 @@ async function main() {
         phone: "(81) 90000-0003",
         role: "CLIENT",
       },
-    });
+    }),
+  );
 
-    await tx.client.upsert({
+  await withAppContext(ADMIN_CTX, (tx) =>
+    tx.client.upsert({
       where: { userId: clientUser.id },
       update: {},
       create: {
@@ -97,9 +121,11 @@ async function main() {
         phone: "(81) 90000-0003",
         email: "cliente@bacelar.dev",
       },
-    });
+    }),
+  );
 
-    const section = await tx.serviceSection.upsert({
+  const section = await withAppContext(ADMIN_CTX, (tx) =>
+    tx.serviceSection.upsert({
       where: { id: "00000000-0000-0000-0000-000000000010" },
       update: {},
       create: {
@@ -108,9 +134,11 @@ async function main() {
         name: "Cortes e combos masculino",
         order: 0,
       },
-    });
+    }),
+  );
 
-    await tx.service.upsert({
+  await withAppContext(ADMIN_CTX, (tx) =>
+    tx.service.upsert({
       where: { id: "00000000-0000-0000-0000-000000000020" },
       update: {},
       create: {
@@ -122,16 +150,16 @@ async function main() {
         genderTag: "M",
         featured: true,
       },
-    });
+    }),
+  );
 
-    await tx.systemSettings.upsert({
+  await withAppContext(ADMIN_CTX, (tx) =>
+    tx.systemSettings.upsert({
       where: { id: 1 },
       update: {},
       create: { id: 1 },
-    });
-
-    void adminUser;
-  });
+    }),
+  );
 
   // Linka os Users acima a contas Supabase Auth com a MESMA senha de
   // demonstração — só roda se NEXT_PUBLIC_SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY

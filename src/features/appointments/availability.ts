@@ -1,10 +1,16 @@
 import { withAppContext } from "@/server/db/context";
 import {
   addMinutesToTime,
+  dateOnlyParts,
   getCalendarWeekday,
   rangesOverlap,
   timeToMinutes,
 } from "@/shared/lib/time";
+
+function dateKey(date: Date): string {
+  const { year, month, day } = dateOnlyParts(date);
+  return `${year}-${month}-${day}`;
+}
 
 const SLOT_STEP_MINUTES = 15;
 
@@ -91,7 +97,19 @@ export async function getUnionAvailableSlots(params: {
   return Array.from(set).sort();
 }
 
-/** Nível de disponibilidade (união) de cada dia de um mês — alimenta as bolinhas do calendário do wizard. */
+/**
+ * Nível de disponibilidade (união) de cada dia de um mês — alimenta as
+ * bolinhas do calendário do wizard.
+ *
+ * Antes chamava getUnionAvailableSlots (que abre sua própria conexão via
+ * withAppContext) uma vez POR DIA do mês — até 31 conexões sequenciais só
+ * pra desenhar o calendário. Contra Postgres local isso era barato; contra
+ * o pooler do Supabase (cada round-trip ~700ms+ desta rede) isso enfileira
+ * atrás de si mesmo e trava a UI por dezenas de segundos, chegando a
+ * parecer travado de vez (timeout do teste E2E "Carregando horários..."
+ * nunca resolvendo). Uma única consulta buscando o mês inteiro e computando
+ * os níveis em memória resolve isso.
+ */
 export async function getMonthAvailabilityLevels(params: {
   professionalIds: string[];
   year: number;
@@ -99,20 +117,62 @@ export async function getMonthAvailabilityLevels(params: {
   durationMinutes: number;
 }): Promise<Record<string, "MUITOS" | "POUCOS" | "NENHUM">> {
   const daysInMonth = new Date(params.year, params.month + 1, 0).getDate();
-  const result: Record<string, "MUITOS" | "POUCOS" | "NENHUM"> = {};
+  const monthStart = new Date(Date.UTC(params.year, params.month, 1));
+  const monthEnd = new Date(Date.UTC(params.year, params.month, daysInMonth));
 
-  for (let day = 1; day <= daysInMonth; day++) {
-    const date = new Date(params.year, params.month, day);
-    const slots = await getUnionAvailableSlots({
-      professionalIds: params.professionalIds,
-      date,
-      durationMinutes: params.durationMinutes,
+  return withAppContext({ role: "ADMIN", userId: null }, async (tx) => {
+    const windows = await tx.weeklyAvailability.findMany({
+      where: { professionalId: { in: params.professionalIds }, active: true },
     });
-    const iso = date.toISOString().slice(0, 10);
-    result[iso] = slots.length === 0 ? "NENHUM" : slots.length <= 3 ? "POUCOS" : "MUITOS";
-  }
+    const appointments = await tx.appointment.findMany({
+      where: {
+        professionalId: { in: params.professionalIds },
+        scheduledDate: { gte: monthStart, lte: monthEnd },
+        status: { in: ["SCHEDULED", "CONFIRMED", "IN_PROGRESS"] },
+      },
+      select: { professionalId: true, scheduledDate: true, startTime: true, endTime: true },
+    });
+    const blocks = await tx.blockedSlot.findMany({
+      where: { professionalId: { in: params.professionalIds }, date: { gte: monthStart, lte: monthEnd } },
+      select: { professionalId: true, date: true, startTime: true, endTime: true },
+    });
 
-  return result;
+    const result: Record<string, "MUITOS" | "POUCOS" | "NENHUM"> = {};
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(params.year, params.month, day);
+      const iso = date.toISOString().slice(0, 10);
+      const weekday = getCalendarWeekday(date);
+      const key = dateKey(date);
+
+      const slotSet = new Set<string>();
+      for (const professionalId of params.professionalIds) {
+        const profWindows = windows.filter((w) => w.professionalId === professionalId && w.weekday === weekday);
+        if (profWindows.length === 0) continue;
+
+        const busy = [
+          ...appointments.filter((a) => a.professionalId === professionalId && dateKey(a.scheduledDate) === key),
+          ...blocks.filter((b) => b.professionalId === professionalId && dateKey(b.date) === key),
+        ];
+
+        for (const window of profWindows) {
+          let cursor = timeToMinutes(window.startTime);
+          const windowEnd = timeToMinutes(window.endTime);
+          while (cursor + params.durationMinutes <= windowEnd) {
+            const slotStart = addMinutesToTime("00:00", cursor);
+            const slotEnd = addMinutesToTime(slotStart, params.durationMinutes);
+            const conflicts = busy.some((b) => rangesOverlap(slotStart, slotEnd, b.startTime, b.endTime));
+            if (!conflicts) slotSet.add(slotStart);
+            cursor += SLOT_STEP_MINUTES;
+          }
+        }
+      }
+
+      result[iso] = slotSet.size === 0 ? "NENHUM" : slotSet.size <= 3 ? "POUCOS" : "MUITOS";
+    }
+
+    return result;
+  });
 }
 
 /**

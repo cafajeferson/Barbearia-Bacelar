@@ -11,7 +11,11 @@ async function pickAvailableDay(page: Page) {
     await dayButtons.nth(i).click();
     const anyTime = page.getByRole("button", { name: /^\d{2}:\d{2}$/ });
     try {
-      await anyTime.first().waitFor({ state: "visible", timeout: 2500 });
+      // Cada clique dispara uma consulta de disponibilidade real (Server
+      // Action -> Postgres); contra um Supabase remoto isso facilmente
+      // passa de 1s por rodada, então 2500ms era curto demais e fazia dias
+      // COM horário livre parecerem sem.
+      await anyTime.first().waitFor({ state: "visible", timeout: 6000 });
       return true;
     } catch {
       // este dia não tinha horário livre — tenta o próximo
@@ -29,6 +33,11 @@ test.describe("Cliente — Home e wizard de agendamento", () => {
   });
 
   test("Wizard completo: serviço → profissional → horário → confirmar", async ({ page }) => {
+    // O passo 3 faz várias consultas de disponibilidade (uma por mês
+    // visível + uma por dia clicado) — contra o pooler do Supabase, cada
+    // uma leva ~700ms desta máquina, o que estoura os 30s padrão em rede
+    // mais lenta. Na VPS (mesma região do Supabase) deve ser bem mais rápido.
+    test.setTimeout(60_000);
     await page.goto("/agendar");
 
     // Passo 1: Serviço

@@ -87,10 +87,23 @@ export function Step3Schedule({
 
   useEffect(() => {
     if (!selectedDate) return;
+    // Se o usuário troca de dia rápido (ou a rede está lenta), duas
+    // requisições ficam em voo ao mesmo tempo e podem resolver fora de
+    // ordem — sem essa guarda, a resposta de um dia ANTERIOR podia chegar
+    // depois e sobrescrever `times` do dia atual com horários de outro dia
+    // (inclusive um dia sem nenhuma vaga real).
+    let cancelled = false;
     setLoadingTimes(true);
     getUnionAvailableSlotsAction({ professionalIds, date: isoDate(selectedDate), durationMinutes })
-      .then(setTimes)
-      .finally(() => setLoadingTimes(false));
+      .then((result) => {
+        if (!cancelled) setTimes(result);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingTimes(false);
+      });
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate?.getTime(), professionalIds.join(","), durationMinutes]);
 

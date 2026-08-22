@@ -47,13 +47,5 @@ export default defineConfig({
     timeout: 60_000,
     stdout: "pipe",
     stderr: "pipe",
-    // .env fixa NEXTAUTH_URL=http://localhost:3000 (porta do dev normal) —
-    // sem isso, todo redirect do middleware pra /login sai apontando pra
-    // porta errada (nada escuta em 3000 durante o E2E, que roda na 3100),
-    // e o browser recebe ERR_CONNECTION_REFUSED ao seguir o redirect. Só
-    // rbac.spec.ts expõe isso porque é o único spec que passa por rota
-    // protegida sem sessão (todos os outros já entram autenticados via
-    // storageState, nunca disparando esse redirect).
-    env: { NEXTAUTH_URL: BASE_URL },
   },
 });
