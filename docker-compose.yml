@@ -30,8 +30,10 @@ services:
     volumes:
       - evolution_instances:/evolution/instances
     environment:
-      # Mesma chave usada em EVOLUTION_API_KEY no .env.production do app.
-      - AUTHENTICATION_API_KEY=troque-esta-chave-por-uma-gerada-com-openssl-rand-hex-32
+      # Mesma chave de EVOLUTION_API_KEY no .env.production — via
+      # substituição de variável do compose, não hardcoded. Rode com
+      # `docker compose --env-file .env.production up -d --build`.
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
       - DATABASE_ENABLED=false
       - CACHE_REDIS_ENABLED=false
       - QRCODE_LIMIT=5

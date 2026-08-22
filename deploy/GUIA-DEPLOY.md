@@ -94,7 +94,7 @@ O `docker-compose.yml` já sobe o `evolution-api` junto com o app na VPS. Depois
 3. Suba os dois serviços (app + Evolution API) via `docker-compose.yml` — já configurado pra expor o app só em `127.0.0.1:3001` (não 3000/5000, que colidiriam com o outro site "pedidos"):
    ```bash
    cd /caminho/do/projeto
-   docker compose up -d --build
+   docker compose --env-file .env.production up -d --build
    ```
 4. Adicione um novo site no nginx do sistema, reaproveitando o domínio (passo 9) — baseado em `deploy/nginx.example.conf`, mas apontando `proxy_pass` pra `http://127.0.0.1:3001` em vez de `3000`.
 5. `EVOLUTION_API_URL` no `.env.production` deve ser `http://evolution-api:8080` (nome do serviço na rede interna do compose) — não `localhost`, já que app e Evolution API rodam em containers separados.
