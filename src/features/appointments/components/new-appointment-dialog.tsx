@@ -20,24 +20,38 @@ export function NewAppointmentDialog({
   defaultDate,
   unitId,
   triggerLabel = "Novo Agendamento",
+  open: controlledOpen,
+  onOpenChange: setControlledOpen,
+  initialProfessionalId,
+  initialStartTime,
+  hideTrigger = false,
 }: {
   professionals: Professional[];
   defaultDate: string; // yyyy-mm-dd
   unitId: string;
   /** "Novo Agendamento" na Agenda Mestre do admin, "Agendar horário" em Minha Agenda. */
   triggerLabel?: string;
+  /** Modo controlado — usado pela Agenda Mestre pra abrir já preenchido ao clicar num espaço vazio da grade. Sem isso, o diálogo controla o próprio estado via o botão de disparo. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  initialProfessionalId?: string;
+  initialStartTime?: string;
+  /** Esconde o botão padrão — pro caso controlado, onde quem abre é a grade, não um botão aqui dentro. */
+  hideTrigger?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = setControlledOpen ?? setUncontrolledOpen;
   const [clients, setClients] = useState<Awaited<ReturnType<typeof listClientsAction>>>([]);
   const [services, setServices] = useState<{ id: string; name: string; price: number }[]>([]);
   const [mode, setMode] = useState<"existing" | "new">("existing");
   const [clientId, setClientId] = useState("");
   const [newClientName, setNewClientName] = useState("");
   const [newClientPhone, setNewClientPhone] = useState("");
-  const [professionalId, setProfessionalId] = useState("");
+  const [professionalId, setProfessionalId] = useState(initialProfessionalId ?? "");
   const [serviceId, setServiceId] = useState("");
-  const [startTime, setStartTime] = useState("09:00");
+  const [startTime, setStartTime] = useState(initialStartTime ?? "09:00");
   const [source, setSource] = useState<"ADMIN_MANUAL" | "WALK_IN">("ADMIN_MANUAL");
   const [submitting, setSubmitting] = useState(false);
 
@@ -51,6 +65,10 @@ export function NewAppointmentDialog({
         ),
       );
     });
+    // Sincroniza com o clique na grade — só quando abre, pra não sobrescrever o que o usuário já ajustou no formulário.
+    if (initialProfessionalId) setProfessionalId(initialProfessionalId);
+    if (initialStartTime) setStartTime(initialStartTime);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   async function handleSubmit() {
@@ -100,11 +118,13 @@ export function NewAppointmentDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button>
-          <Plus className="mr-1 h-4 w-4" /> {triggerLabel}
-        </Button>
-      </DialogTrigger>
+      {!hideTrigger && (
+        <DialogTrigger asChild>
+          <Button>
+            <Plus className="mr-1 h-4 w-4" /> {triggerLabel}
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Novo Agendamento</DialogTitle>

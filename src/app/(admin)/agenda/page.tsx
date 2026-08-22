@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { getAuthContext } from "@/server/auth/getAuthContext";
 import { getAgendaMestreData } from "@/features/appointments/service";
-import { AgendaGrid } from "@/features/appointments/components/agenda-grid";
+import { CalendarBoard } from "@/features/appointments/components/calendar-board";
 import { NewAppointmentDialog } from "@/features/appointments/components/new-appointment-dialog";
 import { BlockTimeDialog } from "@/features/appointments/components/block-time-dialog";
 import { withAppContext } from "@/server/db/context";
@@ -90,7 +90,7 @@ export default async function AgendaMestrePage({
         </Link>
       </div>
 
-      <AgendaGrid data={data} isToday={isToday} />
+      <CalendarBoard data={data} unitId={unit.id} dateISO={dateISO} isToday={isToday} />
     </main>
   );
 }

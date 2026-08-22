@@ -43,6 +43,7 @@ export async function rescheduleAppointmentAction(input: {
   scheduledDate?: string;
   startTime?: string;
   professionalId?: string;
+  durationMinutes?: number;
   forceOverlap?: boolean;
   overrideReason?: string;
 }) {

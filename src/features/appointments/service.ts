@@ -146,6 +146,8 @@ export async function rescheduleAppointment(params: {
   scheduledDate?: Date;
   startTime?: string;
   professionalId?: string;
+  /** Override manual da duração (ex.: resize na Agenda Mestre) — por padrão a duração vem da soma dos serviços. */
+  durationMinutes?: number;
   forceOverlap?: boolean;
   overrideReason?: string;
 }) {
@@ -167,10 +169,9 @@ export async function rescheduleAppointment(params: {
       where: { id: params.appointmentId },
       include: { services: true },
     });
-    const durationMinutes = existing.services.reduce(
-      (sum, s) => sum + s.durationAtBooking,
-      0,
-    );
+    const durationMinutes =
+      params.durationMinutes ??
+      existing.services.reduce((sum, s) => sum + s.durationAtBooking, 0);
     const newStartTime = params.startTime ?? existing.startTime;
     const newEndTime = addMinutesToTime(newStartTime, durationMinutes);
     const newDate = params.scheduledDate ?? existing.scheduledDate;
