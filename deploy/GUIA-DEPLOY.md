@@ -2,19 +2,24 @@
 
 Este guia assume que você já tem: uma conta Supabase, acesso à VPS Hostinger KVM2 (IP + SSH) e um domínio apontável pra ela. Nada disso foi provisionado por mim — eu preparei todo o código, mas as contas/credenciais só você pode criar.
 
-**Importante:** a troca de NextAuth pra Supabase Auth (login, middleware, `getAuthContext()`) foi escrita nesta sessão sem um projeto Supabase real pra testar contra — é código novo, revisado com cuidado, mas **não verificado em execução real**. Trate o Passo 5 como o ponto crítico: teste o login dos 3 papéis assim que o projeto existir, antes de seguir pro deploy na VPS.
+**Já verificado de verdade contra um projeto Supabase real** (não é mais teórico): auth dos 3 papéis, RLS, e a suíte E2E completa (19/19) rodando duas vezes seguidas. Os pontos abaixo marcados com ⚠️ são armadilhas reais que apareceram nesse processo — não pule.
 
 ---
 
 ## 1. Criar o projeto Supabase
 
-1. Crie o projeto em [supabase.com](https://supabase.com) (região mais próxima do Brasil: `sa-east-1`, São Paulo).
-2. Anote a senha do Postgres que você definir na criação — é o `DATABASE_URL`.
+1. Crie o projeto em [supabase.com](https://supabase.com) (região mais próxima do Brasil: `sa-east-1`, São Paulo, ou `us-east-1` se essa não estiver disponível no seu plano).
+2. Anote a senha do Postgres que você definir na criação.
 3. Em **Project Settings → API**, anote:
    - `Project URL` → `NEXT_PUBLIC_SUPABASE_URL`
-   - `anon public` key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `service_role` key → `SUPABASE_SERVICE_ROLE_KEY` (secreta — nunca exponha)
-4. Em **Project Settings → Database → Connection string**, use a conexão **direta** (porta 5432, não a poolada 6543) pra `DATABASE_URL` — o Prisma Migrate precisa dela.
+   - Chave publicável (`sb_publishable_...`) → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - Chave secreta (`sb_secret_...`) → `SUPABASE_SERVICE_ROLE_KEY` (nunca exponha)
+4. ⚠️ **Use o pooler (Supavisor), não a conexão direta.** A conexão direta (`db.SEU_REF.supabase.co:5432`) só resolve em IPv6 — em redes sem rota IPv6 funcional (comum em provedores residenciais/VPS mais antigas), a conexão simplesmente trava sem erro. O pooler aceita IPv4 e funciona igual pra tudo que este projeto precisa (inclusive `prisma migrate`, usando o modo sessão, porta 5432 — não a 6543 transaction). Pegue o host/user em **Project Settings → Database → Connection Pooling**:
+   ```
+   DATABASE_URL="postgresql://postgres.SEU_REF:SENHA@SEU_POOLER_HOST:5432/postgres?pgbouncer=true"
+   ```
+5. ⚠️ **`?pgbouncer=true` não é opcional.** Sem esse parâmetro, sequências de várias operações Prisma numa mesma execução (o seed, por exemplo) falham de forma **não-determinística** — às vezes com "violation of row-level security policy" mesmo a policy estando certa, às vezes com um retorno sem `id`. É uma interação conhecida entre o query-interpreter novo do Prisma 7 e o Supavisor: o parâmetro desliga prepared statements e resolve. Isso já está aplicado em `.env.example`; não remova.
+6. Se a senha do Postgres que você anotou no passo 2 não autenticar (aconteceu aqui — a causa exata ficou incerta), resete via **Project Settings → Database → Reset Database Password** e use a nova.
 
 ## 2. Criar o papel `app_user` no Postgres do Supabase
 
@@ -33,31 +38,25 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
 
 (Isto reproduz exatamente o que a migration `rls_and_overlap_guard` já faz pras tabelas — só o `CREATE ROLE` em si que sempre rodou fora do versionamento, por conter senha.)
 
-`APP_DATABASE_URL` usa esse papel, mesma connection string do passo 1 trocando usuário/senha:
+`APP_DATABASE_URL` usa esse papel, mesmo host/porta do pooler (passo 1.4), trocando usuário (`app_user.SEU_REF`, não só `app_user`) e senha — o Supavisor exige o ref do projeto sufixado no username pra rotear a conexão certo:
 ```
-postgresql://app_user:SUA_SENHA@SEU_HOST:5432/postgres
+postgresql://app_user.SEU_REF:SUA_SENHA@SEU_POOLER_HOST:5432/postgres?pgbouncer=true
 ```
-
-**Verificar antes de seguir:** o pooler do Supabase (Supavisor, porta 6543) pode ter restrições com papéis customizados dependendo do modo de pooling — se decidir usar o pooler em vez da conexão direta pro app_user, teste isso especificamente; não foi validado aqui.
 
 ## 3. Rodar as migrations
 
 ```bash
-# .env local, temporariamente apontando pro Supabase:
-DATABASE_URL="postgresql://postgres:SENHA_DO_PASSO_1@SEU_HOST:5432/postgres"
-
+# .env local apontando pro Supabase (pooler + pgbouncer=true, ver passo 1):
 npx prisma migrate deploy
 ```
 
-Isso aplica as ~14 migrations (schema + RLS + triggers) no Postgres do Supabase, incluindo a mais recente (`add_supabase_auth_user_id`, que adiciona `User.authUserId`).
+Isso aplica as ~15 migrations (schema + RLS + triggers) no Postgres do Supabase, incluindo `add_supabase_auth_user_id` (`User.authUserId`) e `password_hash_nullable`.
 
 ## 4. Variáveis de ambiente
 
-Preencha `.env` (local, só pra rodar os passos 5/6 a partir da sua máquina) e depois `.env.production` (que vai pra VPS) com base em `.env.example` — `DATABASE_URL`/`APP_DATABASE_URL` do Supabase, as 3 chaves Supabase do passo 1, e gere `JOBS_SECRET` com `openssl rand -hex 32`.
+Preencha `.env` (local, só pra rodar os passos 5/6 a partir da sua máquina) e depois `.env.production` (que vai pra VPS) com base em `.env.example` — `DATABASE_URL`/`APP_DATABASE_URL` do Supabase (pooler + `pgbouncer=true`), as 3 chaves Supabase do passo 1, e gere `JOBS_SECRET` com `openssl rand -hex 32`.
 
 ## 5. Migrar/criar os usuários no Supabase Auth
-
-**Ponto crítico — teste aqui antes de continuar.**
 
 ```bash
 npx tsx scripts/migrate-users-to-supabase.ts
@@ -86,16 +85,28 @@ O `docker-compose.yml` já sobe o `evolution-api` junto com o app na VPS. Depois
 
 `src/server/services/whatsapp/index.ts` foi implementado contra o formato documentado da Evolution API v2 (`POST /message/sendText/{instance}`) — **nunca testado contra uma instância real**. Depois de parear o WhatsApp, force um lembrete de teste (`runReminderSchedulerAction` em Configurações) e confira se a mensagem chegou; se o formato da versão que você instalar for diferente, ajuste ali.
 
-## 8. Provisionar a VPS (Coolify)
+## 8. Provisionar na VPS — sem Coolify
 
-1. SSH na VPS Hostinger KVM2, instale o Coolify: `curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash`.
-2. No painel do Coolify, crie um novo projeto apontando pro Dockerfile deste repositório (ou pro `docker-compose.yml`, se preferir gerenciar app + Evolution API como uma unidade).
-3. Configure o domínio no Coolify — ele emite o certificado SSL (Let's Encrypt) automaticamente via Traefik, sem precisar do `deploy/nginx.example.conf` (esse arquivo é só um fallback caso troque de gerenciador de container no futuro).
-4. Cole o conteúdo de `.env.production` nas variáveis de ambiente do serviço no Coolify.
+⚠️ **Mudança em relação ao plano original:** a VPS Hostinger KVM2 já hospeda dois outros sites em produção (nginx do sistema + Certbot, fora de container) — não é uma VPS dedicada. O instalador padrão do Coolify toma as portas 80/443 pra si (proxy Traefik próprio), o que derrubaria os sites existentes. Por isso o Barbearia Bacelar entra como **mais um site no nginx que já roda aí**, não via Coolify.
 
-## 9. Apontar o domínio Hostinger
+1. Confirme que o Docker já está instalado na VPS (`docker --version`) — geralmente já está.
+2. Envie o código pra VPS (`git clone` do repositório, ou `git pull` se já clonado).
+3. Suba os dois serviços (app + Evolution API) via `docker-compose.yml` — já configurado pra expor o app só em `127.0.0.1:3001` (não 3000/5000, que colidiriam com o outro site "pedidos"):
+   ```bash
+   cd /caminho/do/projeto
+   docker compose up -d --build
+   ```
+4. Adicione um novo site no nginx do sistema, reaproveitando o domínio (passo 9) — baseado em `deploy/nginx.example.conf`, mas apontando `proxy_pass` pra `http://127.0.0.1:3001` em vez de `3000`.
+5. `EVOLUTION_API_URL` no `.env.production` deve ser `http://evolution-api:8080` (nome do serviço na rede interna do compose) — não `localhost`, já que app e Evolution API rodam em containers separados.
 
-No painel de DNS da Hostinger, aponte um registro `A` do domínio (ou subdomínio) pro IP da VPS. Propagação pode levar até algumas horas.
+## 9. Domínio — reaproveitando `pauliceiatintasrelatorios.com`
+
+O domínio decidido foi reaproveitar `pauliceiatintasrelatorios.com` (antes servia um dashboard estático de outro projeto, que não é mais necessário). Passos na VPS:
+
+1. **Desative (não apague) o site antigo** que serve esse domínio hoje — está em `/etc/nginx/sites-enabled/pauliceia`. Mova pra fora do `sites-enabled` (`sudo mv /etc/nginx/sites-enabled/pauliceia /etc/nginx/sites-available/pauliceia.disabled` ou similar) em vez de deletar, pra ser reversível.
+2. **Reaproveite o certificado Certbot já emitido** pra esse domínio — não precisa reemitir. Crie o novo bloco de site (passo 8.5) usando `ssl_certificate`/`ssl_certificate_key` apontando pros mesmos arquivos em `/etc/letsencrypt/live/pauliceiatintasrelatorios.com/`.
+3. `sudo nginx -t` (testa a config) e `sudo systemctl reload nginx`.
+4. O DNS do domínio já aponta pra essa VPS (é o mesmo domínio que já estava em uso) — não precisa mexer no DNS.
 
 ## 10. Verificação final
 

@@ -1,9 +1,9 @@
-# Deploy da Fase 10 na VPS Hostinger KVM2, gerenciado pelo Coolify. Coolify
-# cuida do proxy reverso (Traefik) e do certificado SSL automaticamente a
-# partir do domínio configurado no painel — não precisa dos labels do
-# Traefik aqui. Postgres/Auth/Storage/Realtime ficam no Supabase Cloud
-# (fora deste compose, propositalmente: só o app Next.js e a Evolution API
-# rodam na VPS).
+# Deploy da Fase 10 na VPS Hostinger KVM2 — SEM Coolify (a VPS já hospeda
+# outros dois sites via nginx do sistema + Certbot; o instalador padrão do
+# Coolify tomaria as portas 80/443 pra si e derrubaria eles). O nginx já
+# existente na VPS faz o proxy reverso pra este container, num bloco de
+# site novo (ver deploy/nginx.example.conf e deploy/GUIA-DEPLOY.md passo 8).
+# Postgres/Auth/Storage ficam no Supabase Cloud, fora deste compose.
 services:
   app:
     build:
@@ -11,7 +11,9 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      # Só localhost — quem expõe ao público é o nginx do sistema, não o
+      # Docker diretamente (porta livre nesta VPS: 5000 já é de outro site).
+      - "127.0.0.1:3001:3000"
     env_file:
       - .env.production
     depends_on:
@@ -21,13 +23,14 @@ services:
     image: atendai/evolution-api:latest
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      # Só pro pareamento inicial via QR code (painel/API da Evolution) —
+      # pode comentar depois de parear, já que o app fala com ela pela rede
+      # interna do compose (EVOLUTION_API_URL=http://evolution-api:8080).
+      - "127.0.0.1:8080:8080"
     volumes:
       - evolution_instances:/evolution/instances
     environment:
-      # AUTHENTICATION_API_KEY é a mesma chave usada em EVOLUTION_API_KEY no
-      # .env.production do app — troque o valor abaixo (ou melhor, mova pra
-      # .env.production e referencie via ${EVOLUTION_API_KEY} nas duas envs).
+      # Mesma chave usada em EVOLUTION_API_KEY no .env.production do app.
       - AUTHENTICATION_API_KEY=troque-esta-chave-por-uma-gerada-com-openssl-rand-hex-32
       - DATABASE_ENABLED=false
       - CACHE_REDIS_ENABLED=false
