@@ -40,6 +40,7 @@
     "react": "^18",
     "react-day-picker": "^10.0.1",
     "react-dom": "^18",
+    "sharp": "^0.35.3",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.6.0",
     "tailwindcss-animate": "^1.0.7",
