@@ -46,6 +46,9 @@ export async function sendUpcomingReminders() {
       }),
     );
     if (alreadyNotified) continue;
+    // Cliente autocadastrado via Google (Fase 10) pode não ter telefone —
+    // sem número não tem como mandar WhatsApp, pula sem travar o job.
+    if (!a.client.phone) continue;
 
     const message = `Lembrete: você tem ${a.services.map((s) => s.service.name).join(" + ")} com ${a.professional.name} em ${new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" }).format(a.scheduledDate)} às ${a.startTime}.`;
 

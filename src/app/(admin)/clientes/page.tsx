@@ -81,7 +81,7 @@ export default async function ClientesPage({
                     )}
                   </div>
                 </TableCell>
-                <TableCell>{c.phone}</TableCell>
+                <TableCell>{c.phone ?? "—"}</TableCell>
                 <TableCell>
                   {c._count.appointments} atendimentos
                   {c.noShowCount > 0 && (

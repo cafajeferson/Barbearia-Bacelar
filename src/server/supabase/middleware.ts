@@ -28,11 +28,17 @@ export async function updateSupabaseSession(request: NextRequest) {
     },
   );
 
-  // getUser() (não getSession()) porque revalida o JWT contra o servidor
-  // do Supabase Auth — getSession() só lê o cookie, que pode estar velho.
+  // getSession() (não getUser()) de propósito aqui: getUser() faz uma
+  // chamada de rede pro servidor do Supabase Auth em TODA navegação, o que
+  // se soma à latência real (Supabase em us-east-1, VPS no Brasil) e deixa
+  // o site visivelmente lento. Middleware é só a 1ª linha de defesa (troca
+  // de rota/UX) — a checagem de verdade, com getUser() + revalidação
+  // fresca de active/tokenVersion no banco, já acontece em toda
+  // Server Action/página via getAuthContext(). getSession() decodifica o
+  // JWT localmente, sem round-trip.
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  return { response, user };
+  return { response, user: session?.user ?? null };
 }

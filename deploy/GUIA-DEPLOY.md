@@ -81,7 +81,9 @@ Note que os cron schedules em `pg_cron` rodam no fuso do servidor Postgres (gera
 
 ## 7. WhatsApp (Evolution API)
 
-O `docker-compose.yml` já sobe o `evolution-api` junto com o app na VPS. Depois do deploy (passo 9), acesse a instância (`http://SEU_IP:8080` ou via Coolify) pra parear o número via QR code. Preencha `EVOLUTION_API_URL`/`EVOLUTION_API_KEY`/`EVOLUTION_INSTANCE_NAME` no `.env.production` com os mesmos valores usados no compose.
+O `docker-compose.yml` já sobe `evolution-api` + um Postgres dedicado (`evolution-db`) junto com o app na VPS. ⚠️ A imagem atual (`evoapicloud/evolution-api`, a organização mudou de `atendai/evolution-api`) **exige um Postgres de verdade** pro próprio estado — `DATABASE_ENABLED=false` não existe mais como opção; sem um banco configurado ela entra em crash-loop com "Database provider invalid". Já está resolvido no compose (`evolution-db`, senha em `EVOLUTION_DB_PASSWORD` no `.env.production`) — só documentando pra não reintroduzir o problema se mexer nisso depois.
+
+Depois do deploy (passo 8), acesse a instância (`http://SEU_IP:8080`, ou temporariamente exposto — ver comentário no compose) pra parear o número via QR code.
 
 `src/server/services/whatsapp/index.ts` foi implementado contra o formato documentado da Evolution API v2 (`POST /message/sendText/{instance}`) — **nunca testado contra uma instância real**. Depois de parear o WhatsApp, force um lembrete de teste (`runReminderSchedulerAction` em Configurações) e confira se a mensagem chegou; se o formato da versão que você instalar for diferente, ajuste ali.
 

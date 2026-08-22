@@ -22,7 +22,7 @@ import { createClientAction, updateClientAction } from "../actions";
 type ExistingClient = {
   id: string;
   name: string;
-  phone: string;
+  phone: string | null;
   email: string | null;
   notes: string | null;
   blocked: boolean;

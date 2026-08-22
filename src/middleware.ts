@@ -22,5 +22,9 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|brand|manifest).*)"],
+  // /auth/callback (troca de code do OAuth por sessão) fica de fora do
+  // gate igual /api — ele PRECISA rodar antes de qualquer cookie de
+  // sessão existir, então nunca teria um "role" pra passar em
+  // isRouteAllowed.
+  matcher: ["/((?!api|auth|_next/static|_next/image|favicon.ico|brand|manifest).*)"],
 };

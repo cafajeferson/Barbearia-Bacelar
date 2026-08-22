@@ -208,7 +208,10 @@ model Client {
   userId       String?  @unique
   user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   name         String
-  phone        String
+  /// Nullable: cadastro automático via Google (Fase 10) não traz telefone
+  /// — cliente completa depois, se quiser. Walk-in continua exigindo no
+  /// app layer (ver createClient em features/clients/service.ts).
+  phone        String?
   email        String?
   notes        String?
   isWalkIn     Boolean  @default(false)
