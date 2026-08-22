@@ -2,18 +2,20 @@
 # pequena rodando só o output "standalone" do Next.js (server.js
 # autocontido) — sem o node_modules completo, sem devDependencies.
 #
-# node:20-slim (Debian/glibc), não node:20-alpine: alpine (musl libc) fez
-# `npm ci` falhar reclamando de dependências opcionais ausentes do lock
-# file (@emnapi/core, @emnapi/runtime) — resolução de pacote nativo
-# específica de plataforma que o musl não cobre da mesma forma. slim evita
-# essa classe de problema trocando um pouco de tamanho de imagem.
+# Node 22, não 20: @supabase/realtime-js, @supabase/storage-js e
+# @supabase/supabase-js exigem node >=22 (engines) — Node 20 gerava só um
+# warning, mas o npm 10.8.2 que vem com a imagem node:20 também falhava o
+# `npm ci` reclamando de dependências opcionais ausentes do lock file
+# (@emnapi/core, @emnapi/runtime) que o npm 11 (usado pra gerar o lock
+# file localmente) resolve diferente. slim (Debian/glibc) em vez de alpine
+# só por preferência — não foi a causa raiz, confirmado testando as duas.
 
-FROM node:20-slim AS deps
+FROM node:22-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-FROM node:20-slim AS builder
+FROM node:22-slim AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -25,7 +27,7 @@ RUN npx prisma generate
 # runtime) entram aqui via --build-arg no docker-compose/CI.
 RUN npm run build
 
-FROM node:20-slim AS runner
+FROM node:22-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
