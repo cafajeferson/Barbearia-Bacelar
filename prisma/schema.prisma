@@ -1,0 +1,574 @@
+// Barbearia Bacelar — schema principal
+// Convenção de nomes: PascalCase nas tabelas, camelCase nas colunas (default do Prisma).
+// IDs em UUID desde o início — facilita a Fase 10 (Supabase Auth usa UUID em auth.users).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Enums ----------
+
+enum Role {
+  ADMIN
+  PROFESSIONAL
+  CLIENT
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum AppointmentSource {
+  APP
+  WALK_IN
+  ADMIN_MANUAL
+  RECURRING_GENERATED
+}
+
+enum RecurringSeriesStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+  AT_RISK
+}
+
+enum SubscriptionStatus {
+  PENDING
+  ACTIVE
+  PAUSED
+  CANCELLED
+  EXPIRED
+}
+
+enum CouponStatus {
+  PENDING
+  ACTIVE
+  USED
+  EXPIRED
+  DISABLED
+}
+
+enum CouponType {
+  MANUAL
+  AUTO_RETENTION
+  LOYALTY
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+enum CommissionType {
+  SERVICE
+  PRODUCT
+  SUBSCRIPTION
+  WALK_IN
+}
+
+enum CommissionStatus {
+  PENDING
+  PAID
+}
+
+enum NotificationChannel {
+  WHATSAPP
+  IN_APP
+  PUSH
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+  READ
+}
+
+enum NoShowAction {
+  NONE
+  REQUIRE_PREPAYMENT
+  BLOCK_ONLINE_BOOKING
+}
+
+// ---------- Núcleo: unidades, usuários, profissionais, clientes ----------
+
+model Unit {
+  id            String    @id @default(uuid())
+  name          String
+  address       String
+  phone         String?
+  openingHours  Json?
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  professionals ProfessionalUnit[]
+  serviceSections ServiceSection[]
+  appointments  Appointment[]
+  recurringSeries RecurringSeries[]
+}
+
+model User {
+  id            String    @id @default(uuid())
+  /// Fase 10: id do usuário correspondente em auth.users (Supabase Auth) —
+  /// null até a migração rodar (ver scripts/migrate-users-to-supabase.ts).
+  /// Não reaproveitamos o mesmo UUID como PK porque a Admin API do
+  /// Supabase não permite fixar o id no createUser; em vez de arriscar uma
+  /// migração de PK/FK em cascata, guardamos o mapeamento neste campo.
+  authUserId    String?   @unique
+  email         String    @unique
+  name          String?
+  phone         String?
+  /// Fase 10: quem manda em senha é o Supabase Auth (authUserId) — este
+  /// campo vira legado/histórico assim que a migração rodar (mantido
+  /// nullable pra não quebrar o seed local pré-Supabase).
+  passwordHash  String?
+  role          Role
+  active        Boolean   @default(true)
+  tokenVersion  Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  professional  Professional?
+  client        Client?
+  activityLogs  ActivityLog[]
+  notifications NotificationLog[]
+}
+
+model Professional {
+  id                    String   @id @default(uuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                  String
+  color                 String   @default("#F5B301")
+  title                 String?
+  commissionServicePct  Decimal? @db.Decimal(5, 2)
+  commissionWalkInPct   Decimal? @db.Decimal(5, 2)
+  commissionProductPct  Decimal? @db.Decimal(5, 2)
+  active                Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  units                 ProfessionalUnit[]
+  weeklyAvailability    WeeklyAvailability[]
+  blockedSlots          BlockedSlot[]
+  appointments          Appointment[]
+  recurringSeries       RecurringSeries[]
+  commissionEntries     CommissionEntry[]
+  productSales          ProductSale[]
+}
+
+model ProfessionalUnit {
+  professionalId String
+  professional   Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  unitId         String
+  unit           Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@id([professionalId, unitId])
+}
+
+model WeeklyAvailability {
+  id             String       @id @default(uuid())
+  professionalId String
+  professional   Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  weekday        Int // 0 = domingo ... 6 = sábado
+  startTime      String // "09:00"
+  endTime        String // "19:00"
+  active         Boolean      @default(true)
+
+  @@unique([professionalId, weekday, startTime])
+}
+
+model BlockedSlot {
+  id             String       @id @default(uuid())
+  professionalId String
+  professional   Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  date           DateTime     @db.Date
+  startTime      String
+  endTime        String
+  reason         String?
+  createdBy      String
+  createdAt      DateTime     @default(now())
+
+  @@index([professionalId, date])
+}
+
+model Client {
+  id           String   @id @default(uuid())
+  userId       String?  @unique
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name         String
+  phone        String
+  email        String?
+  notes        String?
+  isWalkIn     Boolean  @default(false)
+  noShowCount  Int      @default(0)
+  blocked      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  appointments      Appointment[]
+  subscriptions     ClientSubscription[]
+  coupons           Coupon[]
+  recurringSeries   RecurringSeries[]
+  productSales      ProductSale[]
+  notifications     NotificationLog[]
+
+  @@index([phone])
+}
+
+// ---------- Catálogo: seções, serviços, produtos ----------
+
+model ServiceSection {
+  id       String    @id @default(uuid())
+  unitId   String?
+  unit     Unit?     @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  name     String
+  order    Int       @default(0)
+  active   Boolean   @default(true)
+
+  services Service[]
+}
+
+model Service {
+  id              String   @id @default(uuid())
+  sectionId       String
+  section         ServiceSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  durationMinutes Int
+  price           Decimal  @db.Decimal(10, 2)
+  imageUrl        String?
+  genderTag       String? // "M" | "F" | null (unissex)
+  featured        Boolean  @default(false)
+  order           Int      @default(0)
+  active          Boolean  @default(true)
+
+  appointmentServices AppointmentService[]
+  planServices        PlanService[]
+  promotionServices    PromotionService[]
+  recurringSeries      RecurringSeriesService[]
+}
+
+model Product {
+  id             String   @id @default(uuid())
+  name           String
+  brand          String?
+  category       String?
+  sku            String?  @unique
+  price          Decimal  @db.Decimal(10, 2)
+  cost           Decimal? @db.Decimal(10, 2)
+  stock          Int      @default(0)
+  lowStockAlert  Int      @default(5)
+  commissionPct  Decimal? @db.Decimal(5, 2)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  sales ProductSale[]
+}
+
+// ---------- Agendamentos ----------
+
+model Appointment {
+  id                    String              @id @default(uuid())
+  unitId                String
+  unit                  Unit                @relation(fields: [unitId], references: [id])
+  clientId              String
+  client                Client              @relation(fields: [clientId], references: [id])
+  professionalId        String
+  professional          Professional        @relation(fields: [professionalId], references: [id])
+  status                AppointmentStatus   @default(SCHEDULED)
+  source                AppointmentSource   @default(APP)
+  scheduledDate         DateTime            @db.Date
+  startTime             String
+  endTime               String
+  totalPrice            Decimal             @db.Decimal(10, 2)
+  notes                 String?
+  isRecurring           Boolean             @default(false)
+  recurringSeriesId     String?
+  recurringSeries       RecurringSeries?    @relation(fields: [recurringSeriesId], references: [id], onDelete: SetNull)
+  forceOverlap          Boolean             @default(false)
+  overlapOverrideBy     String?
+  overlapOverrideReason String?
+  cancelledAt           DateTime?
+  cancelledBy           String?
+  cancellationFeeApplied Boolean            @default(false)
+  createdBy             String
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  services   AppointmentService[]
+  statusLogs AppointmentStatusLog[]
+  creditUsage SubscriptionCreditUsage[]
+  couponRedemptions CouponRedemption[]
+
+  @@index([professionalId, scheduledDate])
+  @@index([clientId])
+  @@index([status])
+}
+
+model AppointmentService {
+  appointmentId     String
+  appointment       Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  serviceId         String
+  service           Service     @relation(fields: [serviceId], references: [id])
+  priceAtBooking    Decimal     @db.Decimal(10, 2)
+  durationAtBooking Int
+
+  @@id([appointmentId, serviceId])
+}
+
+model AppointmentStatusLog {
+  id            String            @id @default(uuid())
+  appointmentId String
+  appointment   Appointment       @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  fromStatus    AppointmentStatus
+  toStatus      AppointmentStatus
+  changedBy     String
+  isOverride    Boolean           @default(false)
+  reason        String?
+  createdAt     DateTime          @default(now())
+}
+
+model RecurringSeries {
+  id                   String                @id @default(uuid())
+  clientId             String
+  client               Client                @relation(fields: [clientId], references: [id])
+  professionalId       String
+  professional         Professional          @relation(fields: [professionalId], references: [id])
+  unitId               String
+  unit                 Unit                  @relation(fields: [unitId], references: [id])
+  intervalDays         Int
+  startTime            String                @default("09:00")
+  startDate            DateTime              @db.Date
+  nextRunDate          DateTime              @db.Date
+  occurrencesGenerated Int                   @default(0)
+  status               RecurringSeriesStatus @default(ACTIVE)
+  riskFlag             Boolean               @default(false)
+  lastCompletedAt      DateTime?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  appointments Appointment[]
+  services     RecurringSeriesService[]
+}
+
+model RecurringSeriesService {
+  recurringSeriesId String
+  recurringSeries   RecurringSeries @relation(fields: [recurringSeriesId], references: [id], onDelete: Cascade)
+  serviceId         String
+  service           Service         @relation(fields: [serviceId], references: [id])
+
+  @@id([recurringSeriesId, serviceId])
+}
+
+// ---------- Assinaturas ----------
+
+model SubscriptionPlan {
+  id                   String   @id @default(uuid())
+  name                 String
+  priceMonthly         Decimal  @db.Decimal(10, 2)
+  creditLimitPerMonth  Int
+  billingRule          String?
+  active               Boolean  @default(true)
+
+  services      PlanService[]
+  subscriptions ClientSubscription[]
+}
+
+model PlanService {
+  planId     String
+  plan       SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  serviceId  String
+  service    Service          @relation(fields: [serviceId], references: [id])
+  creditCost Int              @default(1)
+
+  @@id([planId, serviceId])
+}
+
+model ClientSubscription {
+  id                     String             @id @default(uuid())
+  clientId               String
+  client                 Client             @relation(fields: [clientId], references: [id])
+  planId                 String
+  plan                   SubscriptionPlan   @relation(fields: [planId], references: [id])
+  status                 SubscriptionStatus @default(PENDING)
+  startDate              DateTime?
+  nextBillingDate        DateTime?          @db.Date
+  creditsUsedThisPeriod  Int                @default(0)
+  approvedBy             String?
+  approvedAt             DateTime?
+  gracePeriodEndsAt      DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  creditUsage SubscriptionCreditUsage[]
+}
+
+model SubscriptionCreditUsage {
+  id                    String              @id @default(uuid())
+  clientSubscriptionId  String
+  clientSubscription    ClientSubscription  @relation(fields: [clientSubscriptionId], references: [id], onDelete: Cascade)
+  appointmentId         String
+  appointment           Appointment         @relation(fields: [appointmentId], references: [id])
+  creditsUsed           Int
+  createdAt             DateTime            @default(now())
+}
+
+// ---------- Financeiro ----------
+
+model CommissionEntry {
+  id                  String            @id @default(uuid())
+  professionalId      String
+  professional        Professional      @relation(fields: [professionalId], references: [id])
+  type                CommissionType
+  appointmentId       String?
+  productSaleId       String?
+  productSale         ProductSale?      @relation(fields: [productSaleId], references: [id])
+  periodMonth         DateTime          @db.Date // sempre dia 1 do mês de apuração
+  baseAmount          Decimal           @db.Decimal(10, 2)
+  pct                 Decimal           @db.Decimal(5, 2)
+  calculatedAmount    Decimal           @db.Decimal(10, 2)
+  status              CommissionStatus  @default(PENDING)
+  calculationFormula  String?
+  paidAt              DateTime?
+  createdAt           DateTime          @default(now())
+
+  @@unique([professionalId, periodMonth, type, appointmentId])
+}
+
+model ProductSale {
+  id             String        @id @default(uuid())
+  productId      String
+  product        Product       @relation(fields: [productId], references: [id])
+  professionalId String?
+  professional   Professional? @relation(fields: [professionalId], references: [id])
+  clientId       String?
+  client         Client?       @relation(fields: [clientId], references: [id])
+  quantity       Int
+  unitPrice      Decimal       @db.Decimal(10, 2)
+  createdAt      DateTime      @default(now())
+
+  commissionEntries CommissionEntry[]
+}
+
+// ---------- Marketing ----------
+
+model Promotion {
+  id        String    @id @default(uuid())
+  name      String
+  imageUrl  String?
+  tag       String?
+  startDate DateTime  @db.Date
+  endDate   DateTime  @db.Date
+  active    Boolean   @default(true)
+
+  services PromotionService[]
+}
+
+model PromotionService {
+  promotionId  String
+  promotion    Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  serviceId    String
+  service      Service   @relation(fields: [serviceId], references: [id])
+  originalPrice Decimal  @db.Decimal(10, 2)
+  promoPrice    Decimal  @db.Decimal(10, 2)
+
+  @@id([promotionId, serviceId])
+}
+
+model Coupon {
+  id            String        @id @default(uuid())
+  code          String        @unique
+  name          String
+  discountType  DiscountType
+  discountValue Decimal       @db.Decimal(10, 2)
+  type          CouponType    @default(MANUAL)
+  status        CouponStatus  @default(ACTIVE)
+  validFrom     DateTime
+  validUntil    DateTime
+  usageLimit    Int           @default(1)
+  usageCount    Int           @default(0)
+  clientId      String?
+  client        Client?       @relation(fields: [clientId], references: [id])
+  createdBy     String?
+  createdAt     DateTime      @default(now())
+
+  redemptions CouponRedemption[]
+}
+
+model CouponRedemption {
+  id               String      @id @default(uuid())
+  couponId         String
+  coupon           Coupon      @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  appointmentId    String
+  appointment      Appointment @relation(fields: [appointmentId], references: [id])
+  clientId         String
+  discountApplied  Decimal     @db.Decimal(10, 2)
+  createdAt        DateTime    @default(now())
+}
+
+// ---------- Auditoria e notificações ----------
+
+model ActivityLog {
+  id           String   @id @default(uuid())
+  actorUserId  String?
+  actor        User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  action       String
+  entityType   String
+  entityId     String
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+model NotificationLog {
+  id        String              @id @default(uuid())
+  clientId  String?
+  client    Client?             @relation(fields: [clientId], references: [id])
+  userId    String?
+  user      User?               @relation(fields: [userId], references: [id])
+  channel   NotificationChannel
+  template  String
+  payload   Json?
+  status    NotificationStatus  @default(QUEUED)
+  sentAt    DateTime?
+  readAt    DateTime?
+  createdAt DateTime            @default(now())
+}
+
+// ---------- Configuração ----------
+
+model SystemSettings {
+  id                        Int          @id @default(1)
+  noShowThreshold           Int          @default(10)
+  noShowAction              NoShowAction @default(NONE)
+  bookingMinLeadMinutes     Int          @default(30)
+  bookingMaxLeadDays        Int          @default(60)
+  defaultCommissionServicePct Decimal    @db.Decimal(5, 2) @default(40)
+  defaultCommissionWalkInPct  Decimal    @db.Decimal(5, 2) @default(30)
+  defaultCommissionProductPct Decimal    @db.Decimal(5, 2) @default(10)
+  subscriptionGraceDays     Int          @default(5)
+  cancellationWindowHours   Int          @default(12)
+  noShowSweepGraceHours     Int          @default(2)
+  retentionCouponDaysInactive Int        @default(30)
+  reminderHoursBefore       Int          @default(24)
+  recurringGenerationWindowDays Int      @default(60)
+  brandName                 String       @default("Barbearia Bacelar")
+  brandShortName            String       @default("Bacelar")
+  brandTagline              String?
+  updatedAt                 DateTime     @updatedAt
+}

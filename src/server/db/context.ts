@@ -1,0 +1,35 @@
+import type { Prisma } from "@/generated/prisma/client";
+import { prisma } from "./client";
+
+export type AppRole = "ADMIN" | "PROFESSIONAL" | "CLIENT";
+
+export type AppContext = {
+  /** Papel do usuário autenticado — nunca aceite isto vindo do corpo da requisição. */
+  role: AppRole;
+  /**
+   * ID relevante para o papel: Professional.id para PROFESSIONAL,
+   * Client.id para CLIENT, User.id (ou null) para ADMIN.
+   * Vem sempre da sessão NextAuth já verificada no servidor.
+   */
+  userId: string | null;
+};
+
+/**
+ * Executa `fn` dentro de uma transação com `app.role`/`app.user_id` setados
+ * via `set_config(..., true)` (equivalente a SET LOCAL, mas parametrizável —
+ * evita interpolar string bruta em SQL). As policies de RLS em cada tabela
+ * leem essas duas configs através de current_app_role()/current_app_user_id().
+ *
+ * Na Fase 10 (Supabase), essas duas funções passam a ler auth.jwt() — este
+ * helper para de ser necessário, mas as policies continuam as mesmas.
+ */
+export async function withAppContext<T>(
+  ctx: AppContext,
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.role', ${ctx.role}, true)`;
+    await tx.$executeRaw`SELECT set_config('app.user_id', ${ctx.userId ?? ""}, true)`;
+    return fn(tx);
+  });
+}
