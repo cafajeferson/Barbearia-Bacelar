@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { getAuthContext } from "@/server/auth/getAuthContext";
 import { getAgendaMestreData } from "@/features/appointments/service";
 import { CalendarBoard } from "@/features/appointments/components/calendar-board";
+import { AgendaToolbar } from "@/features/appointments/components/agenda-toolbar";
 import { NewAppointmentDialog } from "@/features/appointments/components/new-appointment-dialog";
 import { BlockTimeDialog } from "@/features/appointments/components/block-time-dialog";
 import { withAppContext } from "@/server/db/context";
@@ -62,6 +63,7 @@ export default async function AgendaMestrePage({
           <p className="text-muted-foreground">Visão geral de todos os agendamentos</p>
         </div>
         <div className="flex items-center gap-2">
+          <AgendaToolbar />
           <BlockTimeDialog
             professionals={data.professionals.map((p) => ({ id: p.id, name: p.name }))}
             defaultDate={dateISO}
@@ -74,20 +76,27 @@ export default async function AgendaMestrePage({
         </div>
       </div>
 
-      <div className="flex items-center justify-center gap-4">
-        <Link
-          href={`/agenda?date=${toISODate(prevDate)}`}
-          className="rounded-md border p-1.5 hover:bg-accent"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Link>
-        <span className="min-w-56 text-center font-medium capitalize">{dateLabel}</span>
-        <Link
-          href={`/agenda?date=${toISODate(nextDate)}`}
-          className="rounded-md border p-1.5 hover:bg-accent"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Link>
+      <div className="flex flex-col items-center gap-1">
+        <div className="flex items-center gap-4">
+          <Link
+            href={`/agenda?date=${toISODate(prevDate)}`}
+            className="rounded-md border p-1.5 hover:bg-accent"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Link>
+          <span className="min-w-56 text-center font-medium capitalize">{dateLabel}</span>
+          <Link
+            href={`/agenda?date=${toISODate(nextDate)}`}
+            className="rounded-md border p-1.5 hover:bg-accent"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Link>
+        </div>
+        {!isToday && (
+          <Link href="/agenda" className="text-xs text-primary underline underline-offset-2">
+            Ir para hoje
+          </Link>
+        )}
       </div>
 
       <CalendarBoard data={data} unitId={unit.id} dateISO={dateISO} isToday={isToday} />

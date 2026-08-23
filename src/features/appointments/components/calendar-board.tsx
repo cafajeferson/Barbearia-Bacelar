@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Crown } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -266,7 +267,7 @@ export function CalendarBoard({
             {hourMarks.map((m) => (
               <div
                 key={m}
-                className="absolute right-2 -translate-y-1/2 text-xs text-muted-foreground"
+                className="absolute inset-x-0 -translate-y-1/2 pr-2 text-right text-xs text-muted-foreground"
                 style={{ top: (m - DAY_START) * PX_PER_MINUTE }}
               >
                 {String(Math.floor(m / 60)).padStart(2, "0")}:00
@@ -284,7 +285,7 @@ export function CalendarBoard({
               >
                 {initials(prof.name)}
               </div>
-              <span className="truncate text-sm font-medium">{prof.name}</span>
+              <span className="min-w-0 truncate text-sm font-medium">{prof.name}</span>
             </div>
             <div
               className="relative cursor-pointer"
@@ -323,7 +324,7 @@ export function CalendarBoard({
                   <div
                     key={b.id}
                     onClick={(e) => e.stopPropagation()}
-                    className="absolute left-0.5 right-0.5 z-10 overflow-hidden rounded border border-destructive/30 bg-[repeating-linear-gradient(45deg,theme(colors.destructive/15%),theme(colors.destructive/15%)_6px,transparent_6px,transparent_12px)] p-1 text-[11px] text-muted-foreground"
+                    className="absolute inset-x-0 z-10 overflow-hidden border-y border-destructive/20 bg-[repeating-linear-gradient(45deg,theme(colors.destructive/12%),theme(colors.destructive/12%)_6px,transparent_6px,transparent_12px)] p-1 text-[11px] text-muted-foreground"
                     style={{ top, height: Math.max(height, 16) }}
                     title={b.reason ?? "Bloqueado"}
                   >
@@ -338,8 +339,10 @@ export function CalendarBoard({
                   ? resizePreview.durationMinutes
                   : timeToMinutes(a.endTime) - timeToMinutes(a.startTime);
                 const top = (timeToMinutes(a.startTime) - DAY_START) * PX_PER_MINUTE;
-                const height = durationMinutes * PX_PER_MINUTE;
+                const cardHeight = Math.max(durationMinutes * PX_PER_MINUTE, 20);
                 const faded = a.status === "COMPLETED" || a.status === "NO_SHOW";
+                const inProgress = a.status === "IN_PROGRESS";
+                const isSubscriber = a.client.subscriptions.length > 0;
                 return (
                   <div
                     key={a.id}
@@ -349,24 +352,29 @@ export function CalendarBoard({
                       e.stopPropagation();
                       setSelectedId(a.id);
                     }}
-                    className="group absolute left-0.5 right-0.5 z-10 cursor-grab overflow-hidden rounded-md border p-1 text-[11px] leading-tight active:cursor-grabbing"
+                    className={`group absolute left-0.5 right-0.5 z-10 cursor-grab overflow-hidden rounded-md border p-1 text-[11px] leading-tight active:cursor-grabbing ${inProgress ? "ring-2 ring-offset-1 ring-offset-background" : ""}`}
                     style={{
                       top,
-                      height: Math.max(height, 20),
-                      backgroundColor: `${prof.color}${faded ? "1a" : "33"}`,
+                      height: cardHeight,
+                      backgroundColor: `${prof.color}${faded ? "1a" : inProgress ? "4d" : "33"}`,
                       borderColor: a.status === "NO_SHOW" ? "oklch(var(--destructive))" : prof.color,
+                      ...(inProgress ? ({ "--tw-ring-color": prof.color } as React.CSSProperties) : {}),
                     }}
                     title={`${a.client.name} — ${a.services.map((s) => s.service.name).join(" + ")}`}
                   >
-                    <p className="truncate font-medium">
-                      {a.client.name} {a.forceOverlap && "⚠"}
+                    <p className={`flex min-w-0 items-center gap-1 font-medium ${inProgress ? "uppercase" : ""}`}>
+                      {isSubscriber && <Crown className="h-3 w-3 shrink-0" style={{ color: prof.color }} />}
+                      <span className="min-w-0 truncate">{a.client.name}</span>
+                      {a.forceOverlap && <span className="shrink-0">⚠</span>}
                     </p>
                     <p className="truncate text-muted-foreground">
                       {a.services.map((s) => s.service.name).join(" + ")}
                     </p>
-                    <p className="text-muted-foreground">
-                      {a.startTime}–{minutesToTime(timeToMinutes(a.startTime) + durationMinutes)}
-                    </p>
+                    {cardHeight >= 44 && (
+                      <p className="text-muted-foreground">
+                        {a.startTime}–{minutesToTime(timeToMinutes(a.startTime) + durationMinutes)}
+                      </p>
+                    )}
                     {/* Alça de redimensionar — só na borda inferior, estilo Booksy. */}
                     <div
                       onMouseDown={(e) => startResize(e, a.id, timeToMinutes(a.endTime) - timeToMinutes(a.startTime))}

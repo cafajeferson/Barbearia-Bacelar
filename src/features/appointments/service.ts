@@ -251,7 +251,12 @@ export async function getAgendaMestreData(params: { ctx: AuthenticatedContext; d
     const professionals = await tx.professional.findMany({ where: { active: true }, orderBy: { name: "asc" } });
     const appointmentsList = await tx.appointment.findMany({
       where: { scheduledDate: params.date, status: { not: "CANCELLED" } },
-      include: { client: true, services: { include: { service: true } } },
+      include: {
+        // subscriptions ACTIVE só pra decidir o ícone de assinante (coroa)
+        // no card — mesmo critério já usado em /clientes.
+        client: { include: { subscriptions: { where: { status: "ACTIVE" }, take: 1 } } },
+        services: { include: { service: true } },
+      },
     });
     const blockedSlots = await tx.blockedSlot.findMany({ where: { date: params.date } });
     return { professionals, appointments: appointmentsList, blockedSlots };

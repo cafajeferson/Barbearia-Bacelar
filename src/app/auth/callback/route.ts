@@ -20,7 +20,15 @@ const BOOTSTRAP: AppContext = { role: "ADMIN", userId: null };
  * cadastrado por um admin ganha um papel diferente de CLIENT.
  */
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
+  // NÃO usar `new URL(request.url).origin` aqui: atrás do nginx, o server
+  // standalone do Next não reconstrói o host externo de forma confiável e
+  // cai pro endereço interno do container (http://0.0.0.0:3000) — o login
+  // com Google te devolvia pro localhost/0.0.0.0 em vez do domínio real.
+  // Monta a origem a partir do header que o proxy manda de verdade.
+  const forwardedHost = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  const forwardedProto = request.headers.get("x-forwarded-proto") ?? "https";
+  const origin = `${forwardedProto}://${forwardedHost}`;
   const code = searchParams.get("code");
   if (!code) {
     return NextResponse.redirect(`${origin}/login`);

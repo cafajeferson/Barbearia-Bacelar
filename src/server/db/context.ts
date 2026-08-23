@@ -28,8 +28,11 @@ export async function withAppContext<T>(
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
   return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT set_config('app.role', ${ctx.role}, true)`;
-    await tx.$executeRaw`SELECT set_config('app.user_id', ${ctx.userId ?? ""}, true)`;
+    // As duas set_config num único round-trip (não duas) — com o Supabase
+    // em us-east-1 e o app no Brasil, cada ida-e-volta custa uns
+    // 200-400ms, e toda página chama withAppContext várias vezes; isso
+    // sozinho já corta uma viagem inteira por transação em todo o app.
+    await tx.$executeRaw`SELECT set_config('app.role', ${ctx.role}, true), set_config('app.user_id', ${ctx.userId ?? ""}, true)`;
     return fn(tx);
   });
 }

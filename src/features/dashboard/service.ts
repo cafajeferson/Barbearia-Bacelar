@@ -28,19 +28,49 @@ export async function getDashboardData(params: {
 
     // Uma única conexão por transação — consultas na mesma `tx` rodam em
     // SÉRIE, nunca com Promise.all (senão o driver `pg` intercala queries
-    // na mesma conexão, o que é indefinido/depreciado).
-    const appointmentsToday = await tx.appointment.count({ where: { ...unitFilter, scheduledDate: today, status: { not: "CANCELLED" } } });
-    const appointmentsYesterday = await tx.appointment.count({ where: { ...unitFilter, scheduledDate: yesterday, status: { not: "CANCELLED" } } });
-    const completedToday = await tx.appointment.findMany({ where: { ...unitFilter, scheduledDate: today, status: "COMPLETED" }, select: { totalPrice: true } });
-    const completedYesterday = await tx.appointment.findMany({ where: { ...unitFilter, scheduledDate: yesterday, status: "COMPLETED" }, select: { totalPrice: true } });
-    const completedMonth = await tx.appointment.findMany({ where: { ...unitFilter, scheduledDate: { gte: monthStart }, status: "COMPLETED" }, select: { totalPrice: true } });
+    // na mesma conexão, o que é indefinido/depreciado). Como cada query aqui
+    // paga uma viagem de ida-e-volta inteira até o Supabase (Brasil <->
+    // us-east-1, ~200-400ms cada), o número de queries importa tanto quanto
+    // o custo de cada uma — por isso hoje/ontem/mês, que eram 5 queries
+    // (2 counts + 3 findMany), viram 1 findMany só, com os 3 recortes
+    // calculados em memória a partir do mesmo resultado.
+    const recentRangeStart = yesterday < monthStart ? yesterday : monthStart;
+    const recentAppointments = await tx.appointment.findMany({
+      where: { ...unitFilter, scheduledDate: { gte: recentRangeStart }, status: { not: "CANCELLED" } },
+      select: { scheduledDate: true, status: true, totalPrice: true },
+    });
+    const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+    const todayKey = dayKey(today);
+    const yesterdayKey = dayKey(yesterday);
+    const monthStartKey = dayKey(monthStart);
+    const todayRows = recentAppointments.filter((r) => dayKey(r.scheduledDate) === todayKey);
+    const yesterdayRows = recentAppointments.filter((r) => dayKey(r.scheduledDate) === yesterdayKey);
+    // Comparação por string "YYYY-MM-DD" (não Date >= direto): scheduledDate
+    // vem ancorado em meia-noite UTC, monthStart em meia-noite LOCAL — num
+    // fuso negativo (Brasil, UTC-3) isso faz meia-noite local cair às 03h
+    // UTC do mesmo dia, então um Date >= Date puro excluiria por engano um
+    // agendamento no dia 1º às 00h UTC. Comparar a data-string evita isso.
+    const monthRows = recentAppointments.filter((r) => dayKey(r.scheduledDate) >= monthStartKey);
+    const appointmentsToday = todayRows.length;
+    const appointmentsYesterday = yesterdayRows.length;
+    const completedToday = todayRows.filter((r) => r.status === "COMPLETED");
+    const completedYesterday = yesterdayRows.filter((r) => r.status === "COMPLETED");
+    const completedMonth = monthRows.filter((r) => r.status === "COMPLETED");
+
+    // totalClients + newClientsInPeriod: mesma tabela, 1 SELECT com dois
+    // COUNT(*) FILTER em vez de duas queries.
+    const clientCounts = await tx.$queryRaw<{ total: bigint; new_in_period: bigint }[]>`
+      SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE "createdAt" >= ${periodStart ?? monthStart}) AS new_in_period
+      FROM "Client"
+    `;
+    const totalClients = Number(clientCounts[0]?.total ?? 0);
+    const newClientsInPeriod = Number(clientCounts[0]?.new_in_period ?? 0);
+
     const pendingCount = await tx.appointment.count({ where: { ...unitFilter, status: { in: ["SCHEDULED", "CONFIRMED"] } } });
     const periodAppointments = await tx.appointment.findMany({
       where: { ...unitFilter, scheduledDate: periodStart ? { gte: periodStart } : undefined },
       include: { services: { include: { service: true } }, professional: true },
     });
-    const totalClients = await tx.client.count();
-    const newClientsInPeriod = await tx.client.count({ where: { createdAt: { gte: periodStart ?? monthStart } } });
     const activeProfessionals = await tx.professional.count({ where: { active: true } });
     const upcoming = await tx.appointment.findMany({
       where: { ...unitFilter, status: { in: ["SCHEDULED", "CONFIRMED"] }, scheduledDate: { gte: today } },

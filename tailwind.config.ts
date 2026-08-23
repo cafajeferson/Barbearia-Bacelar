@@ -3,9 +3,11 @@ import type { Config } from "tailwindcss";
 const config: Config = {
     darkMode: ["class"],
     content: [
-    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    // Antes só cobria pages/components/app — features/ e shared/ (onde mora
+    // a maior parte da UI do sistema) ficavam de fora do scanner, então
+    // qualquer classe usada só ali (ex.: w-56 no calendar-board) nunca era
+    // gerada no CSS final, mesmo com a classe certa no JSX.
+    "./src/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
   	extend: {
