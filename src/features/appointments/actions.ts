@@ -5,7 +5,7 @@ import { getAuthContext } from "@/server/auth/getAuthContext";
 import * as service from "./service";
 import { getAvailableSlots, getUnionAvailableSlots, getMonthAvailabilityLevels } from "./availability";
 import { transitionAppointmentStatus } from "./stateMachine";
-import { bookAppointmentAsClient } from "./booking";
+import { bookAppointmentAsClient, validateCoupon } from "./booking";
 import type { AppointmentSource, AppointmentStatus } from "@/generated/prisma/enums";
 
 async function requireAuth() {
@@ -134,6 +134,14 @@ export async function getMonthAvailabilityAction(input: {
 }) {
   await requireAuth();
   return getMonthAvailabilityLevels(input);
+}
+
+/** Valida o cupom assim que o cliente clica "Aplicar" — feedback na hora, em vez de só descobrir que é inválido/expirado ao confirmar o agendamento inteiro. */
+export async function validateCouponAction(code: string) {
+  const ctx = await requireAuth();
+  if (ctx.role !== "CLIENT" || !ctx.userId) throw new Error("Este fluxo é exclusivo para clientes.");
+  const coupon = await validateCoupon(ctx, code, ctx.userId);
+  return { code: coupon.code, discountType: coupon.discountType, discountValue: Number(coupon.discountValue) };
 }
 
 export async function bookAppointmentAsClientAction(input: {

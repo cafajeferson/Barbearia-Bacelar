@@ -33,14 +33,7 @@ export async function bookAppointmentAsClient(params: {
   // Validações que devem falhar ANTES de criar o agendamento.
   let coupon: Awaited<ReturnType<typeof findCoupon>> = null;
   if (params.couponCode) {
-    coupon = await findCoupon(ctx, params.couponCode);
-    if (!coupon) throw new Error("Cupom inválido.");
-    if (coupon.status !== "ACTIVE") throw new Error("Este cupom não está ativo.");
-    if (coupon.validUntil.getTime() < Date.now()) throw new Error("Este cupom expirou.");
-    if (coupon.usageCount >= coupon.usageLimit) throw new Error("Este cupom já atingiu o limite de usos.");
-    if (coupon.clientId && coupon.clientId !== clientId) {
-      throw new Error("Este cupom não é válido para este cliente.");
-    }
+    coupon = await validateCoupon(ctx, params.couponCode, clientId);
   }
 
   let subscription: Awaited<ReturnType<typeof findSubscription>> = null;
@@ -142,6 +135,25 @@ export async function bookAppointmentAsClient(params: {
 
 function findCoupon(ctx: AuthenticatedContext, code: string) {
   return withAppContext(ctx, (tx) => tx.coupon.findUnique({ where: { code: code.toUpperCase() } }));
+}
+
+/**
+ * Exportada pra também validar o cupom no momento em que o cliente clica
+ * "Aplicar" no wizard (feedback na hora) — antes disso, o cupom só era
+ * checado no confirmar final, e um cupom expirado/inválido ali derrubava a
+ * página inteira em produção (erro não tratado escapando do try/catch do
+ * clique de confirmar).
+ */
+export async function validateCoupon(ctx: AuthenticatedContext, code: string, clientId: string) {
+  const coupon = await findCoupon(ctx, code);
+  if (!coupon) throw new Error("Cupom inválido.");
+  if (coupon.status !== "ACTIVE") throw new Error("Este cupom não está ativo.");
+  if (coupon.validUntil.getTime() < Date.now()) throw new Error("Este cupom expirou.");
+  if (coupon.usageCount >= coupon.usageLimit) throw new Error("Este cupom já atingiu o limite de usos.");
+  if (coupon.clientId && coupon.clientId !== clientId) {
+    throw new Error("Este cupom não é válido para este cliente.");
+  }
+  return coupon;
 }
 
 function findSubscription(ctx: AuthenticatedContext, subscriptionId: string) {

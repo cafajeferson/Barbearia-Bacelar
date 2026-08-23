@@ -77,9 +77,20 @@ export function CalendarBoard({
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createAt, setCreateAt] = useState<{ professionalId: string; startTime: string } | null>(null);
-  // Preview local ao redimensionar — só grava no servidor no mouseup, mas o card já reflete o tamanho em tempo real.
+  // Preview local ao redimensionar — só grava no servidor no soltar, mas o card já reflete o tamanho em tempo real.
   const [resizePreview, setResizePreview] = useState<{ appointmentId: string; durationMinutes: number } | null>(null);
   const resizingRef = useRef<{ appointmentId: string; startY: number; baseDuration: number } | null>(null);
+  // Preview local ao arrastar (mover) — mesma ideia do resize.
+  const [movePreview, setMovePreview] = useState<{ appointmentId: string; professionalId: string; top: number } | null>(null);
+  const movingRef = useRef<{
+    appointmentId: string;
+    startX: number;
+    startY: number;
+    grabOffsetY: number;
+    originalProfessionalId: string;
+    originalStartTime: string;
+    moved: boolean;
+  } | null>(null);
 
   const visibleProfessionals = data.professionals.filter((p) => !hidden.has(p.id));
 
@@ -133,22 +144,85 @@ export function CalendarBoard({
     router.refresh();
   }
 
-  function handleDrop(e: React.DragEvent<HTMLDivElement>, professionalId: string) {
-    e.preventDefault();
-    setDragOverCol(null);
-    const appointmentId = e.dataTransfer.getData("appointmentId");
-    if (!appointmentId) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const offsetY = e.clientY - rect.top;
-    const minutes = snap(DAY_START + offsetY / PX_PER_MINUTE);
-    const startTime = minutesToTime(minutes);
-    doReschedule({ appointmentId, professionalId, startTime }).catch((err) => {
-      if (isConflictMessage(err) && canForceOverlap) {
-        setPendingForce({ kind: "move", appointmentId, professionalId, startTime });
-      } else {
-        toast.error(err instanceof Error ? err.message : "Erro ao reagendar.");
+  // Pointer Events (não o Drag-and-Drop nativo do HTML5, que não funciona em
+  // toque) — assim o profissional consegue arrastar pelo celular, não só
+  // admin no desktop com mouse. Um toque parado (sem mover) abre os
+  // detalhes; só vira "arrastar" depois de passar de um limiar de movimento.
+  function startMove(e: React.PointerEvent, appointment: AgendaData["appointments"][number]) {
+    if (e.button !== 0) return;
+    const cardEl = e.currentTarget as HTMLElement;
+    const columnEl = cardEl.closest<HTMLElement>("[data-professional-id]");
+    if (!columnEl) return;
+    const colRect = columnEl.getBoundingClientRect();
+    const cardTop = (timeToMinutes(appointment.startTime) - DAY_START) * PX_PER_MINUTE;
+    const grabOffsetY = e.clientY - colRect.top - cardTop;
+    movingRef.current = {
+      appointmentId: appointment.id,
+      startX: e.clientX,
+      startY: e.clientY,
+      grabOffsetY,
+      originalProfessionalId: appointment.professionalId,
+      originalStartTime: appointment.startTime,
+      moved: false,
+    };
+
+    function onMove(ev: PointerEvent) {
+      const ctx = movingRef.current;
+      if (!ctx) return;
+      const dx = ev.clientX - ctx.startX;
+      const dy = ev.clientY - ctx.startY;
+      if (!ctx.moved && Math.hypot(dx, dy) < 6) return;
+      ctx.moved = true;
+      const targetEl = document.elementFromPoint(ev.clientX, ev.clientY)?.closest<HTMLElement>("[data-professional-id]");
+      const targetProfessionalId = targetEl?.dataset.professionalId ?? ctx.originalProfessionalId;
+      const targetRect = (targetEl ?? columnEl)!.getBoundingClientRect();
+      const top = Math.max(0, ev.clientY - targetRect.top - ctx.grabOffsetY);
+      setDragOverCol(targetProfessionalId);
+      setMovePreview({ appointmentId: ctx.appointmentId, professionalId: targetProfessionalId, top });
+    }
+
+    function onUp() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      const ctx = movingRef.current;
+      movingRef.current = null;
+      setDragOverCol(null);
+      if (!ctx) return;
+      if (!ctx.moved) {
+        // Só um toque, sem arrastar de verdade — abre os detalhes.
+        setSelectedId(ctx.appointmentId);
+        setMovePreview(null);
+        return;
       }
-    });
+      setMovePreview((preview) => {
+        if (preview) {
+          const minutes = snap(DAY_START + preview.top / PX_PER_MINUTE);
+          const startTime = minutesToTime(minutes);
+          if (startTime !== ctx.originalStartTime || preview.professionalId !== ctx.originalProfessionalId) {
+            doReschedule({ appointmentId: ctx.appointmentId, professionalId: preview.professionalId, startTime }).catch(
+              (err) => {
+                if (isConflictMessage(err) && canForceOverlap) {
+                  setPendingForce({
+                    kind: "move",
+                    appointmentId: ctx.appointmentId,
+                    professionalId: preview.professionalId,
+                    startTime,
+                  });
+                } else {
+                  toast.error(err instanceof Error ? err.message : "Erro ao reagendar.");
+                }
+              },
+            );
+          }
+        }
+        return null;
+      });
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   }
 
   function handleColumnClick(e: React.MouseEvent<HTMLDivElement>, professionalId: string) {
@@ -160,13 +234,13 @@ export function CalendarBoard({
     setCreateAt({ professionalId, startTime: minutesToTime(minutes) });
   }
 
-  function startResize(e: React.MouseEvent, appointmentId: string, baseDuration: number) {
+  function startResize(e: React.PointerEvent, appointmentId: string, baseDuration: number) {
     e.preventDefault();
     e.stopPropagation();
     resizingRef.current = { appointmentId, startY: e.clientY, baseDuration };
     setResizePreview({ appointmentId, durationMinutes: baseDuration });
 
-    function onMove(ev: MouseEvent) {
+    function onMove(ev: PointerEvent) {
       const ctx = resizingRef.current;
       if (!ctx) return;
       const deltaMinutes = (ev.clientY - ctx.startY) / PX_PER_MINUTE;
@@ -175,8 +249,9 @@ export function CalendarBoard({
     }
 
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
       const ctx = resizingRef.current;
       resizingRef.current = null;
       if (!ctx) return;
@@ -201,8 +276,9 @@ export function CalendarBoard({
       });
     }
 
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   }
 
   function handleForceConfirm() {
@@ -292,13 +368,8 @@ export function CalendarBoard({
             </div>
             <div
               className="relative cursor-pointer"
+              data-professional-id={prof.id}
               style={{ height: totalHeight }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragOverCol(prof.id);
-              }}
-              onDragLeave={() => setDragOverCol(null)}
-              onDrop={(e) => handleDrop(e, prof.id)}
               onClick={(e) => handleColumnClick(e, prof.id)}
             >
               {hourMarks.map((m) => (
@@ -338,10 +409,14 @@ export function CalendarBoard({
 
               {(appointmentsByProf.get(prof.id) ?? []).map((a) => {
                 const isResizing = resizePreview?.appointmentId === a.id;
+                const isMoving = movePreview?.appointmentId === a.id;
                 const durationMinutes = isResizing
                   ? resizePreview.durationMinutes
                   : timeToMinutes(a.endTime) - timeToMinutes(a.startTime);
-                const top = (timeToMinutes(a.startTime) - DAY_START) * PX_PER_MINUTE;
+                const top =
+                  movePreview?.appointmentId === a.id
+                    ? movePreview.top
+                    : (timeToMinutes(a.startTime) - DAY_START) * PX_PER_MINUTE;
                 const cardHeight = Math.max(durationMinutes * PX_PER_MINUTE, 20);
                 const faded = a.status === "COMPLETED" || a.status === "NO_SHOW";
                 const inProgress = a.status === "IN_PROGRESS";
@@ -349,13 +424,9 @@ export function CalendarBoard({
                 return (
                   <div
                     key={a.id}
-                    draggable
-                    onDragStart={(e) => e.dataTransfer.setData("appointmentId", a.id)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedId(a.id);
-                    }}
-                    className={`group absolute left-0.5 right-0.5 z-10 cursor-grab overflow-hidden rounded-md border p-1 text-[11px] leading-tight active:cursor-grabbing ${inProgress ? "ring-2 ring-offset-1 ring-offset-background" : ""}`}
+                    onPointerDown={(e) => startMove(e, a)}
+                    onClick={(e) => e.stopPropagation()}
+                    className={`group absolute left-0.5 right-0.5 z-10 cursor-grab touch-none overflow-hidden rounded-md border p-1 text-[11px] leading-tight active:cursor-grabbing ${inProgress ? "ring-2 ring-offset-1 ring-offset-background" : ""} ${isMoving ? "opacity-70 shadow-lg" : ""}`}
                     style={{
                       top,
                       height: cardHeight,
@@ -378,12 +449,16 @@ export function CalendarBoard({
                         {a.startTime}–{minutesToTime(timeToMinutes(a.startTime) + durationMinutes)}
                       </p>
                     )}
-                    {/* Alça de redimensionar — só na borda inferior, estilo Booksy. */}
+                    {/* Alça de redimensionar — só na borda inferior, estilo Booksy. Sempre
+                        visível (não só no hover): em toque não existe hover, e a alça
+                        escondida ficava impossível de pegar com o dedo. */}
                     <div
-                      onMouseDown={(e) => startResize(e, a.id, timeToMinutes(a.endTime) - timeToMinutes(a.startTime))}
-                      className="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize opacity-0 group-hover:opacity-100"
+                      onPointerDown={(e) =>
+                        startResize(e, a.id, timeToMinutes(a.endTime) - timeToMinutes(a.startTime))
+                      }
+                      className="absolute inset-x-0 bottom-0 flex h-4 touch-none cursor-ns-resize items-end justify-center pb-0.5"
                     >
-                      <div className="mx-auto mt-1 h-0.5 w-6 rounded-full bg-foreground/40" />
+                      <div className="h-1 w-8 rounded-full bg-foreground/40" />
                     </div>
                   </div>
                 );

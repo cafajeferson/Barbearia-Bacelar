@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatBRL } from "@/shared/lib/format";
+import { validateCouponAction } from "@/features/appointments/actions";
 import type { WizardProfessional, WizardService, WizardSubscription } from "./types";
 
 export function Step4Confirm({
@@ -48,6 +49,28 @@ export function Step4Confirm({
   onBack: () => void;
 }) {
   const [couponInput, setCouponInput] = useState(couponCode);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [checkingCoupon, setCheckingCoupon] = useState(false);
+
+  async function handleApplyCoupon() {
+    if (!couponInput.trim()) {
+      onCouponCodeChange("");
+      setCouponError(null);
+      return;
+    }
+    setCheckingCoupon(true);
+    setCouponError(null);
+    try {
+      await validateCouponAction(couponInput);
+      onCouponCodeChange(couponInput);
+    } catch (err) {
+      onCouponCodeChange("");
+      setCouponError(err instanceof Error ? err.message : "Cupom inválido.");
+    } finally {
+      setCheckingCoupon(false);
+    }
+  }
+
   const usableSubscriptions = subscriptions.filter(
     (s) => s.status === "ACTIVE" && s.creditsUsedThisPeriod < s.plan.creditLimitPerMonth,
   );
@@ -77,14 +100,20 @@ export function Step4Confirm({
         <div className="flex gap-2">
           <Input
             value={couponInput}
-            onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+            onChange={(e) => {
+              setCouponInput(e.target.value.toUpperCase());
+              setCouponError(null);
+            }}
             placeholder="Digite o código"
           />
-          <Button variant="outline" onClick={() => onCouponCodeChange(couponInput)}>
-            Aplicar
+          <Button variant="outline" onClick={handleApplyCoupon} disabled={checkingCoupon}>
+            {checkingCoupon ? "Verificando..." : "Aplicar"}
           </Button>
         </div>
-        {couponCode && <p className="text-xs text-success">Cupom &ldquo;{couponCode}&rdquo; será aplicado.</p>}
+        {couponError && <p className="text-xs text-destructive">{couponError}</p>}
+        {couponCode && !couponError && (
+          <p className="text-xs text-success">Cupom &ldquo;{couponCode}&rdquo; será aplicado.</p>
+        )}
       </div>
 
       <div className="space-y-2">
