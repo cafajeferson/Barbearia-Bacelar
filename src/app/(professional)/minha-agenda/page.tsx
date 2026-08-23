@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarPlus, ChevronLeft, ChevronRight, RefreshCw, Ban } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { getAuthContext } from "@/server/auth/getAuthContext";
 import { getOwnDayData, getOwnWeekData } from "@/features/professionals/service";
 import { withAppContext } from "@/server/db/context";
@@ -8,9 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { NewAppointmentDialog } from "@/features/appointments/components/new-appointment-dialog";
 import { BlockTimeDialog } from "@/features/appointments/components/block-time-dialog";
-import { AppointmentStatusActions } from "@/features/professionals/components/appointment-status-actions";
-import { formatBRL, initials } from "@/shared/lib/format";
-import { cn } from "@/lib/utils";
+import { CalendarBoard } from "@/features/appointments/components/calendar-board";
+import { formatBRL } from "@/shared/lib/format";
 
 const STATUS_LABEL: Record<string, string> = {
   SCHEDULED: "Agendado",
@@ -105,13 +104,33 @@ export default async function MinhaAgendaPage({
         </Link>
       </div>
 
-      {isWeek ? <WeekView ctx={ctx} startDate={date} /> : <DayView ctx={ctx} date={date} />}
+      {isWeek ? (
+        <WeekView ctx={ctx} startDate={date} />
+      ) : (
+        <DayView ctx={ctx} date={date} dateISO={dateISO} unitId={unit.id} />
+      )}
     </main>
   );
 }
 
-async function DayView({ ctx, date }: { ctx: NonNullable<Awaited<ReturnType<typeof getAuthContext>>>; date: Date }) {
-  const { appointments, blockedSlots, kpis } = await getOwnDayData({ ctx, date });
+async function DayView({
+  ctx,
+  date,
+  dateISO,
+  unitId,
+}: {
+  ctx: NonNullable<Awaited<ReturnType<typeof getAuthContext>>>;
+  date: Date;
+  dateISO: string;
+  unitId: string;
+}) {
+  const { professional, appointments, blockedSlots, kpis } = await getOwnDayData({ ctx, date });
+  // totalPrice (Decimal) não atravessa a fronteira Server -> Client Component.
+  const data = { professionals: [professional], appointments: appointments.map((a) => ({ ...a, totalPrice: Number(a.totalPrice) })), blockedSlots };
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const isToday = date.getTime() === today.getTime();
 
   return (
     <div className="space-y-4">
@@ -137,57 +156,10 @@ async function DayView({ ctx, date }: { ctx: NonNullable<Awaited<ReturnType<type
         </Card>
       </div>
 
-      {blockedSlots.length > 0 && (
-        <div className="space-y-1">
-          {blockedSlots.map((b) => (
-            <div key={b.id} className="flex items-center gap-2 rounded-md border border-dashed p-2 text-sm text-muted-foreground">
-              <Ban className="h-4 w-4" />
-              {b.startTime}–{b.endTime} · {b.reason ?? "Bloqueado"}
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div>
-        <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Agenda do dia</h2>
-        {appointments.length === 0 ? (
-          <Card className="flex flex-col items-center gap-3 p-8 text-center">
-            <CalendarPlus className="h-10 w-10 text-muted-foreground" />
-            <p className="text-sm font-medium">Nenhum agendamento</p>
-            <p className="text-xs text-muted-foreground">Você não tem atendimentos para este dia.</p>
-          </Card>
-        ) : (
-          <div className="space-y-2">
-            {appointments.map((a) => (
-              <Card key={a.id} className="p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-medium">
-                      {initials(a.client.name)}
-                    </div>
-                    <div>
-                      <p className="font-medium">{a.client.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {a.services.map((s) => s.service.name).join(" + ")} · {a.startTime}–{a.endTime}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge
-                    variant={a.status === "COMPLETED" ? "default" : "outline"}
-                    className={cn(a.status === "NO_SHOW" && "text-destructive")}
-                  >
-                    {STATUS_LABEL[a.status]}
-                  </Badge>
-                </div>
-                <div className="mt-2 flex items-center justify-between">
-                  <span className="text-sm font-semibold">{formatBRL(Number(a.totalPrice))}</span>
-                  <AppointmentStatusActions appointmentId={a.id} status={a.status} />
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Mesma grade da Agenda Mestre do admin, só com a própria coluna —
+          arrastar/redimensionar funciona igual, mas não pode forçar
+          sobreposição (só admin pode). */}
+      <CalendarBoard data={data} unitId={unitId} dateISO={dateISO} isToday={isToday} canForceOverlap={false} />
     </div>
   );
 }

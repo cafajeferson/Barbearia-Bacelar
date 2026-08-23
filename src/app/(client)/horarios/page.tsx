@@ -24,7 +24,10 @@ export default async function HorariosPage() {
   const upcoming = appointments.filter(
     (a) => a.scheduledDate >= new Date(now.toDateString()) && !["CANCELLED", "COMPLETED", "NO_SHOW"].includes(a.status),
   );
-  const history = appointments.filter((a) => !upcoming.includes(a));
+  // listAppointments vem em ordem crescente de data — os últimos 3 do
+  // array são os mais recentes; .reverse() pra mostrar do mais novo pro
+  // mais antigo, como o cliente espera ver um histórico.
+  const history = appointments.filter((a) => !upcoming.includes(a)).slice(-3).reverse();
 
   return (
     <main className="space-y-6 p-4">

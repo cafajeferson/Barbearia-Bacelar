@@ -195,9 +195,13 @@ export async function getOwnDayData(params: { ctx: AuthenticatedContext; date: D
   const professionalId = params.ctx.userId;
 
   return withAppContext(params.ctx, async (tx) => {
+    const professional = await tx.professional.findUniqueOrThrow({ where: { id: professionalId } });
     const appointments = await tx.appointment.findMany({
       where: { professionalId, scheduledDate: params.date, status: { not: "CANCELLED" } },
-      include: { client: true, services: { include: { service: true } } },
+      include: {
+        client: { include: { subscriptions: { where: { status: "ACTIVE" }, take: 1 } } },
+        services: { include: { service: true } },
+      },
       orderBy: { startTime: "asc" },
     });
     const blockedSlots = await tx.blockedSlot.findMany({
@@ -211,6 +215,7 @@ export async function getOwnDayData(params: { ctx: AuthenticatedContext; date: D
     const pending = waiting.reduce((sum, a) => sum + Number(a.totalPrice), 0);
 
     return {
+      professional,
       appointments,
       blockedSlots,
       kpis: {

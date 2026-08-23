@@ -61,11 +61,14 @@ export function CalendarBoard({
   unitId,
   dateISO,
   isToday,
+  canForceOverlap = true,
 }: {
   data: AgendaData;
   unitId: string;
   dateISO: string;
   isToday: boolean;
+  /** Só ADMIN pode forçar sobreposição (regra do backend) — Minha Agenda do profissional esconde essa opção em vez de deixar o botão falhar. */
+  canForceOverlap?: boolean;
 }) {
   const router = useRouter();
   const [hidden, setHidden] = useState<Set<string>>(new Set());
@@ -140,7 +143,7 @@ export function CalendarBoard({
     const minutes = snap(DAY_START + offsetY / PX_PER_MINUTE);
     const startTime = minutesToTime(minutes);
     doReschedule({ appointmentId, professionalId, startTime }).catch((err) => {
-      if (isConflictMessage(err)) {
+      if (isConflictMessage(err) && canForceOverlap) {
         setPendingForce({ kind: "move", appointmentId, professionalId, startTime });
       } else {
         toast.error(err instanceof Error ? err.message : "Erro ao reagendar.");
@@ -181,7 +184,7 @@ export function CalendarBoard({
         if (preview && preview.durationMinutes !== ctx.baseDuration) {
           doReschedule({ appointmentId: ctx.appointmentId, durationMinutes: preview.durationMinutes }).catch(
             (err) => {
-              if (isConflictMessage(err)) {
+              if (isConflictMessage(err) && canForceOverlap) {
                 setPendingForce({
                   kind: "resize",
                   appointmentId: ctx.appointmentId,
