@@ -21,7 +21,7 @@ export function ManagePlansDialog() {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="outline">
+        <Button>
           <Settings className="mr-1 h-4 w-4" /> Gerenciar Planos
         </Button>
       </SheetTrigger>
@@ -39,8 +39,10 @@ export function ManagePlansDialog() {
                   plan={{
                     id: plan.id,
                     name: plan.name,
+                    description: plan.description,
                     priceMonthly: Number(plan.priceMonthly),
                     creditLimitPerMonth: plan.creditLimitPerMonth,
+                    allowedWeekdays: plan.allowedWeekdays,
                     services: plan.services,
                   }}
                 />
@@ -48,8 +50,9 @@ export function ManagePlansDialog() {
               <p className="text-sm text-muted-foreground">
                 {plan.services.map((s) => s.service.name).join(" + ")}
               </p>
+              {plan.description && <p className="mt-1 text-xs text-muted-foreground">{plan.description}</p>}
               <p className="mt-1 text-sm">
-                {formatBRL(Number(plan.priceMonthly))}/mês · {plan.creditLimitPerMonth} créditos
+                {formatBRL(Number(plan.priceMonthly))}/mês · {plan.creditLimitPerMonth}x por período
               </p>
             </div>
           ))}

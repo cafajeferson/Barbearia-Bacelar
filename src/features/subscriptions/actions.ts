@@ -12,28 +12,35 @@ async function requireAuth() {
 
 export async function createSubscriptionPlanAction(input: {
   name: string;
+  description?: string;
   priceMonthly: number;
   creditLimitPerMonth: number;
+  allowedWeekdays?: number[];
   billingRule?: string;
   serviceIds: string[];
 }) {
   const ctx = await requireAuth();
   const plan = await service.createSubscriptionPlan({ ctx, ...input });
   revalidatePath("/assinaturas");
+  revalidatePath("/plano");
   return plan;
 }
 
 export async function updateSubscriptionPlanAction(input: {
   planId: string;
   name?: string;
+  description?: string;
   priceMonthly?: number;
   creditLimitPerMonth?: number;
+  allowedWeekdays?: number[];
   billingRule?: string;
   active?: boolean;
+  serviceIds?: string[];
 }) {
   const ctx = await requireAuth();
   const plan = await service.updateSubscriptionPlan({ ctx, ...input });
   revalidatePath("/assinaturas");
+  revalidatePath("/plano");
   return plan;
 }
 

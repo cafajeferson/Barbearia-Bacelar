@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { requestClientSubscriptionAction } from "@/features/subscriptions/actions";
 
@@ -24,7 +25,8 @@ export function SubscribePlanButton({ clientId, planId }: { clientId: string; pl
 
   return (
     <Button className="w-full" onClick={handleClick} disabled={isPending}>
-      {isPending ? "Enviando..." : "Assinar"}
+      <Send className="mr-1.5 h-4 w-4" />
+      {isPending ? "Enviando..." : "Quero este plano"}
     </Button>
   );
 }

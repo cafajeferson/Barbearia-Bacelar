@@ -10,8 +10,10 @@ function requireAdmin(ctx: AuthenticatedContext) {
 export async function createSubscriptionPlan(params: {
   ctx: AuthenticatedContext;
   name: string;
+  description?: string;
   priceMonthly: number;
   creditLimitPerMonth: number;
+  allowedWeekdays?: number[];
   billingRule?: string;
   serviceIds: string[];
 }) {
@@ -20,8 +22,10 @@ export async function createSubscriptionPlan(params: {
     tx.subscriptionPlan.create({
       data: {
         name: params.name,
+        description: params.description,
         priceMonthly: params.priceMonthly,
         creditLimitPerMonth: params.creditLimitPerMonth,
+        allowedWeekdays: params.allowedWeekdays ?? [],
         billingRule: params.billingRule,
         services: { create: params.serviceIds.map((serviceId) => ({ serviceId })) },
       },
@@ -33,14 +37,23 @@ export async function updateSubscriptionPlan(params: {
   ctx: AuthenticatedContext;
   planId: string;
   name?: string;
+  description?: string;
   priceMonthly?: number;
   creditLimitPerMonth?: number;
+  allowedWeekdays?: number[];
   billingRule?: string;
   active?: boolean;
+  serviceIds?: string[];
 }) {
   requireAdmin(params.ctx);
-  const { ctx, planId, ...data } = params;
-  return withAppContext(ctx, (tx) => tx.subscriptionPlan.update({ where: { id: planId }, data }));
+  const { ctx, planId, serviceIds, ...data } = params;
+  return withAppContext(ctx, async (tx) => {
+    if (serviceIds) {
+      await tx.planService.deleteMany({ where: { planId } });
+      await tx.planService.createMany({ data: serviceIds.map((serviceId) => ({ planId, serviceId })) });
+    }
+    return tx.subscriptionPlan.update({ where: { id: planId }, data });
+  });
 }
 
 export async function listSubscriptionPlans(params: { ctx: AuthenticatedContext }) {

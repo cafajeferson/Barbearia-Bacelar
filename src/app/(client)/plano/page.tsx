@@ -1,3 +1,4 @@
+import { CalendarDays } from "lucide-react";
 import { getAuthContext } from "@/server/auth/getAuthContext";
 import { getOwnSubscriptions, listSubscriptionPlans } from "@/features/subscriptions/service";
 import { Card } from "@/components/ui/card";
@@ -14,6 +15,17 @@ const STATUS_LABEL: Record<string, string> = {
   CANCELLED: "Cancelada",
   EXPIRED: "Expirada",
 };
+
+const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+function weekdaysLabel(allowedWeekdays: number[]) {
+  if (allowedWeekdays.length === 0 || allowedWeekdays.length === 7) return null;
+  return allowedWeekdays
+    .slice()
+    .sort((a, b) => a - b)
+    .map((d) => WEEKDAY_LABELS[d])
+    .join(", ");
+}
 
 export default async function PlanoPage() {
   const ctx = await getAuthContext();
@@ -74,21 +86,49 @@ export default async function PlanoPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {plans
             .filter((p) => p.active && !subscribedPlanIds.has(p.id))
-            .map((p) => (
-              <Card key={p.id} className="flex flex-col gap-2 p-4">
-                <p className="font-medium">{p.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {p.services.map((ps) => ps.service.name).join(" + ")}
-                </p>
-                <p className="text-lg font-semibold text-primary">
-                  {formatBRL(Number(p.priceMonthly))}
-                  <span className="text-xs font-normal text-muted-foreground">/mês</span>
-                </p>
-                <p className="text-xs text-muted-foreground">{p.creditLimitPerMonth} créditos por mês</p>
-                <SubscribePlanButton clientId={ctx.userId!} planId={p.id} />
-              </Card>
-            ))}
+            .map((p) => {
+              const serviceNames = p.services.map((ps) => ps.service.name);
+              const weekdays = weekdaysLabel(p.allowedWeekdays);
+              return (
+                <Card key={p.id} className="flex flex-col gap-3 p-4">
+                  <div>
+                    <p className="text-lg font-semibold">{p.name}</p>
+                    <p className="text-xs text-muted-foreground">Mensal</p>
+                  </div>
+
+                  <p className="text-2xl font-bold text-primary">
+                    {formatBRL(Number(p.priceMonthly))}
+                    <span className="text-xs font-normal text-muted-foreground">/mês</span>
+                  </p>
+
+                  {p.description && <p className="text-sm text-muted-foreground">{p.description}</p>}
+
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge variant="outline" className="border-primary text-primary">
+                      {p.creditLimitPerMonth}x por período
+                    </Badge>
+                    {serviceNames.length > 1 && <Badge variant="secondary">{serviceNames.join(" + ")}</Badge>}
+                    {serviceNames.map((name) => (
+                      <Badge key={name} variant="secondary">
+                        {name}
+                      </Badge>
+                    ))}
+                    {weekdays && (
+                      <Badge variant="secondary" className="gap-1">
+                        <CalendarDays className="h-3 w-3" />
+                        {weekdays}
+                      </Badge>
+                    )}
+                  </div>
+
+                  <SubscribePlanButton clientId={ctx.userId!} planId={p.id} />
+                </Card>
+              );
+            })}
         </div>
+        <p className="px-1 text-center text-xs text-muted-foreground">
+          Após solicitar, realize o pagamento na barbearia para ativar sua assinatura.
+        </p>
       </section>
     </main>
   );

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Clock, CheckCircle2, Wallet, UserRound, Check } from "lucide-react";
 import { getAuthContext } from "@/server/auth/getAuthContext";
 import { listClientSubscriptions, getSubscriptionSummary } from "@/features/subscriptions/service";
 import { Card } from "@/components/ui/card";
@@ -8,8 +8,9 @@ import { SearchBox } from "@/shared/components/search-box";
 import { ManagePlansDialog } from "@/features/subscriptions/components/manage-plans-dialog";
 import { NewSubscriptionDialog } from "@/features/subscriptions/components/new-subscription-dialog";
 import { SubscriptionActions } from "@/features/subscriptions/components/subscription-actions";
+import { RefreshButton } from "@/features/subscriptions/components/refresh-button";
+import { StatusFilter } from "@/features/subscriptions/components/status-filter";
 import { formatBRL, formatPercent } from "@/shared/lib/format";
-import { cn } from "@/lib/utils";
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "Pendente",
@@ -41,49 +42,48 @@ export default async function AssinaturasPage({
     <main className="space-y-4 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Assinaturas</h1>
-          <p className="text-muted-foreground">Planos recorrentes de clientes</p>
+          <h1 className="text-2xl font-semibold">Assinaturas ({subs.length})</h1>
+          <p className="text-muted-foreground">Gerencie as assinaturas dos clientes</p>
         </div>
         <div className="flex gap-2">
+          <RefreshButton />
           <ManagePlansDialog />
-          <NewSubscriptionDialog />
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card className="p-4">
-          <p className="text-sm text-muted-foreground">Pendentes</p>
+          <div className="flex items-start justify-between">
+            <p className="text-sm text-muted-foreground">Pendentes</p>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </div>
           <p className="text-2xl font-semibold">{summary.pending}</p>
+          <p className="text-xs text-muted-foreground">aguardando aprovação</p>
         </Card>
         <Card className="p-4">
-          <p className="text-sm text-muted-foreground">Ativas</p>
-          <p className="text-2xl font-semibold">
-            {summary.activeCount}{" "}
-            <span className="text-sm font-normal text-muted-foreground">
-              ({formatPercent(summary.activePct)})
-            </span>
-          </p>
+          <div className="flex items-start justify-between">
+            <p className="text-sm text-muted-foreground">Ativas</p>
+            <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <p className="text-2xl font-semibold">{summary.activeCount}</p>
+          <p className="text-xs text-muted-foreground">{formatPercent(summary.activePct)} do total</p>
         </Card>
         <Card className="p-4">
-          <p className="text-sm text-muted-foreground">Receita Mensal</p>
+          <div className="flex items-start justify-between">
+            <p className="text-sm text-muted-foreground">Receita Mensal</p>
+            <Wallet className="h-4 w-4 text-muted-foreground" />
+          </div>
           <p className="text-2xl font-semibold">{formatBRL(summary.monthlyRevenue)}</p>
+          <p className="text-xs text-muted-foreground">estimada</p>
         </Card>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <SearchBox placeholder="Buscar cliente" />
-        {Object.entries(STATUS_LABEL).map(([key, label]) => (
-          <Link
-            key={key}
-            href={`/assinaturas?${new URLSearchParams({ ...(search ? { search } : {}), status: status === key ? "" : key }).toString()}`}
-            className={cn(
-              "rounded-full border px-3 py-1 text-xs",
-              status === key ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground",
-            )}
-          >
-            {label}
-          </Link>
-        ))}
+        <SearchBox placeholder="Buscar por cliente ou plano..." />
+        <StatusFilter />
+        <div className="ml-auto">
+          <NewSubscriptionDialog />
+        </div>
       </div>
 
       <div className="rounded-lg border">
@@ -93,37 +93,40 @@ export default async function AssinaturasPage({
               <TableHead>Cliente</TableHead>
               <TableHead>Plano</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Uso</TableHead>
-              <TableHead>Próxima cobrança</TableHead>
-              <TableHead className="w-32" />
+              <TableHead>Usos</TableHead>
+              <TableHead className="w-40" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {subs.map((s) => (
               <TableRow key={s.id}>
                 <TableCell>
-                  <p className="font-medium">{s.client.name}</p>
-                  <p className="text-xs text-muted-foreground">{s.client.email ?? s.client.phone}</p>
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary">
+                      <UserRound className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{s.client.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">{s.client.email ?? s.client.phone}</p>
+                    </div>
+                  </div>
                 </TableCell>
                 <TableCell>
                   <p className="font-medium">{s.plan.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {s.plan.services.map((ps) => ps.service.name).join(" + ")} ·{" "}
-                    {formatBRL(Number(s.plan.priceMonthly))}/mês
+                    {formatBRL(Number(s.plan.priceMonthly))}/mensal
+                    {s.nextBillingDate && ` · Próx: ${new Intl.DateTimeFormat("pt-BR").format(s.nextBillingDate)}`}
                   </p>
                 </TableCell>
                 <TableCell>
                   <Badge variant={s.status === "ACTIVE" ? "default" : s.status === "PENDING" ? "outline" : "secondary"}>
+                    {s.status === "ACTIVE" && <Check className="mr-1 h-3 w-3" />}
                     {STATUS_LABEL[s.status]}
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  {s.creditsUsedThisPeriod}/{s.plan.creditLimitPerMonth}
-                </TableCell>
-                <TableCell>
-                  {s.nextBillingDate
-                    ? new Intl.DateTimeFormat("pt-BR").format(s.nextBillingDate)
-                    : "—"}
+                  <span className="font-semibold">{s.creditsUsedThisPeriod}</span>
+                  <span className="text-muted-foreground"> /{s.plan.creditLimitPerMonth}</span>
                 </TableCell>
                 <TableCell>
                   <SubscriptionActions subscriptionId={s.id} status={s.status} />
