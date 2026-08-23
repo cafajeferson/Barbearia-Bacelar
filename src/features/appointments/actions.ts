@@ -79,7 +79,14 @@ export async function transitionAppointmentStatusAction(input: {
   const appointment = await transitionAppointmentStatus({ ctx, ...input });
   revalidatePath("/agenda");
   revalidatePath("/minha-agenda");
+  revalidatePath("/em-aberto");
+  revalidatePath("/dashboard");
   return appointment;
+}
+
+export async function listOpenAppointmentsAction() {
+  const ctx = await requireAuth();
+  return service.listOpenAppointments({ ctx });
 }
 
 export async function listAppointmentsAction(input: {

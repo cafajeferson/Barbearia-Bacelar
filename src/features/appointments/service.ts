@@ -316,3 +316,28 @@ export async function listAppointments(params: {
     }),
   );
 }
+
+/**
+ * Atendimentos "presos" — SCHEDULED/CONFIRMED/IN_PROGRESS cujo horário já
+ * passou há mais de 24h sem ninguém ter fechado o status (concluído,
+ * cancelado ou marcado como não compareceu). Mesmo critério do card
+ * "Atendimentos em aberto" do dashboard (getDashboardData) — centralizado
+ * aqui pra não divergir.
+ */
+export async function listOpenAppointments(params: { ctx: AuthenticatedContext }) {
+  return withAppContext(params.ctx, async (tx) => {
+    const rows = await tx.appointment.findMany({
+      where: { status: { in: ["SCHEDULED", "CONFIRMED", "IN_PROGRESS"] } },
+      include: {
+        client: true,
+        professional: true,
+        services: { include: { service: true } },
+      },
+      orderBy: [{ scheduledDate: "asc" }, { startTime: "asc" }],
+    });
+    const now = new Date();
+    return rows
+      .map((a) => ({ ...a, scheduledAt: combineDateAndTime(a.scheduledDate, a.startTime) }))
+      .filter((a) => now.getTime() - a.scheduledAt.getTime() > 24 * 3_600_000);
+  });
+}
