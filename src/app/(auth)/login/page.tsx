@@ -85,25 +85,32 @@ function LoginForm() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-6">
-      <div className="w-full max-w-sm space-y-4 rounded-lg border border-border bg-card p-8">
-        <div className="flex flex-col items-center gap-3 pb-2">
+    <main
+      className="flex min-h-screen items-center justify-center bg-background p-4 sm:p-6"
+      style={{ paddingTop: "max(1rem, env(safe-area-inset-top))", paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
+    >
+      {/* Mobile: tela cheia, sem caixa/borda, elementos maiores pro toque —
+          o card pequeno flutuando no meio de uma tela preta enorme ficava
+          minúsculo demais num celular de verdade. Em telas maiores (sm+),
+          volta a ser um card centralizado, que funciona bem em desktop. */}
+      <div className="w-full max-w-sm space-y-6 rounded-none border-0 bg-transparent p-0 sm:space-y-4 sm:rounded-lg sm:border sm:border-border sm:bg-card sm:p-8">
+        <div className="flex flex-col items-center gap-4 pb-2 sm:gap-3">
           <Image
             src="/brand/icon-any.png"
             alt="Barbearia Bacelar"
-            width={128}
-            height={128}
+            width={160}
+            height={160}
             priority
-            className="rounded-full"
+            className="h-36 w-36 rounded-full sm:h-32 sm:w-32"
           />
-          <h1 className="text-xl font-semibold text-primary">Barbearia Bacelar</h1>
+          <h1 className="text-2xl font-semibold text-primary sm:text-xl">Barbearia Bacelar</h1>
         </div>
 
         <button
           type="button"
           onClick={handleGoogleLogin}
           disabled={isGoogleLoading}
-          className="flex w-full items-center justify-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50"
+          className="flex h-14 w-full items-center justify-center gap-2 rounded-md border border-input bg-background px-3 text-base font-medium hover:bg-accent disabled:opacity-50 sm:h-10 sm:text-sm"
         >
           <GoogleIcon />
           {isGoogleLoading ? "Redirecionando..." : "Continuar com Google"}
@@ -115,7 +122,7 @@ function LoginForm() {
           <div className="h-px flex-1 bg-border" />
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-4">
           <div className="space-y-2">
             <label className="text-sm text-muted-foreground" htmlFor="email">
               E-mail
@@ -125,7 +132,9 @@ function LoginForm() {
               name="email"
               type="email"
               required
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              autoComplete="email"
+              inputMode="email"
+              className="h-14 w-full rounded-md border border-input bg-background px-4 text-base sm:h-10 sm:px-3 sm:text-sm"
             />
           </div>
           <div className="space-y-2">
@@ -137,11 +146,12 @@ function LoginForm() {
               name="password"
               type="password"
               required
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              autoComplete="current-password"
+              className="h-14 w-full rounded-md border border-input bg-background px-4 text-base sm:h-10 sm:px-3 sm:text-sm"
             />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" className="w-full" disabled={isPending}>
+          <Button type="submit" className="h-14 w-full text-base sm:h-10 sm:text-sm" disabled={isPending}>
             {isPending ? "Entrando..." : "Entrar"}
           </Button>
         </form>
