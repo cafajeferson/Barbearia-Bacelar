@@ -40,6 +40,7 @@ const fetchCurrentUser = cache(async () => {
         active: true,
         role: true,
         name: true,
+        email: true,
         professional: { select: { id: true, name: true } },
         client: { select: { id: true, name: true } },
       },
@@ -80,4 +81,14 @@ export async function getCurrentUserName(): Promise<string | null> {
   const fresh = await fetchCurrentUser();
   if (!fresh || !fresh.active) return null;
   return fresh.name ?? fresh.professional?.name ?? fresh.client?.name ?? null;
+}
+
+/** Nome + e-mail pra exibição (menu de perfil) — mesma requisição cacheada do getAuthContext. */
+export async function getCurrentUserProfile(): Promise<{ name: string | null; email: string } | null> {
+  const fresh = await fetchCurrentUser();
+  if (!fresh || !fresh.active) return null;
+  return {
+    name: fresh.name ?? fresh.professional?.name ?? fresh.client?.name ?? null,
+    email: fresh.email,
+  };
 }

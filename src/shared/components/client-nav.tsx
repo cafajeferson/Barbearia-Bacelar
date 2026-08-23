@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Home, Clock, CalendarPlus, CreditCard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NotificationBell } from "@/features/client-app/components/notification-bell";
+import { ClientUserMenu } from "@/features/client-app/components/client-user-menu";
 
 const LINKS = [
   { href: "/inicio", label: "Início", icon: Home },
@@ -20,7 +21,15 @@ const LINKS = [
  * verdade (~56px), padrão de app mobile. A barra de cima fica só com
  * marca/localização/notificação, sem competir por espaço com os links.
  */
-export function ClientNav({ unitName }: { unitName: string }) {
+export function ClientNav({
+  unitName,
+  userName,
+  userEmail,
+}: {
+  unitName: string;
+  userName: string | null;
+  userEmail: string;
+}) {
   return (
     <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur">
       <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 px-4 py-3">
@@ -31,7 +40,10 @@ export function ClientNav({ unitName }: { unitName: string }) {
             <p className="text-sm font-medium">{unitName}</p>
           </div>
         </div>
-        <NotificationBell />
+        <div className="flex items-center gap-3">
+          <NotificationBell />
+          <ClientUserMenu name={userName} email={userEmail} />
+        </div>
       </div>
     </header>
   );
