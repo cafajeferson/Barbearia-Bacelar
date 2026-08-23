@@ -39,10 +39,14 @@ export default async function AgendaMestrePage({
     getAgendaMestreData({ ctx, date }),
     withAppContext(ctx, (tx) => tx.unit.findFirstOrThrow()),
   ]);
-  // totalPrice (Decimal) não atravessa a fronteira Server -> Client Component.
+  // totalPrice/priceAtBooking (Decimal) não atravessam a fronteira Server -> Client Component.
   const data = {
     ...rawData,
-    appointments: rawData.appointments.map((a) => ({ ...a, totalPrice: Number(a.totalPrice) })),
+    appointments: rawData.appointments.map((a) => ({
+      ...a,
+      totalPrice: Number(a.totalPrice),
+      products: a.products.map((p) => ({ ...p, priceAtBooking: Number(p.priceAtBooking) })),
+    })),
   };
 
   const today = new Date();

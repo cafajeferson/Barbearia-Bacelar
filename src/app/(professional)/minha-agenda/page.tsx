@@ -125,8 +125,16 @@ async function DayView({
   unitId: string;
 }) {
   const { professional, appointments, blockedSlots, kpis } = await getOwnDayData({ ctx, date });
-  // totalPrice (Decimal) não atravessa a fronteira Server -> Client Component.
-  const data = { professionals: [professional], appointments: appointments.map((a) => ({ ...a, totalPrice: Number(a.totalPrice) })), blockedSlots };
+  // totalPrice/priceAtBooking (Decimal) não atravessam a fronteira Server -> Client Component.
+  const data = {
+    professionals: [professional],
+    appointments: appointments.map((a) => ({
+      ...a,
+      totalPrice: Number(a.totalPrice),
+      products: a.products.map((p) => ({ ...p, priceAtBooking: Number(p.priceAtBooking) })),
+    })),
+    blockedSlots,
+  };
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);

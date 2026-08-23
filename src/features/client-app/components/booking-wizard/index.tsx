@@ -6,9 +6,10 @@ import { toast } from "sonner";
 import { WizardProgressBar } from "./progress-bar";
 import { Step1Service } from "./step1-service";
 import { Step2Professional } from "./step2-professional";
+import { Step3Products } from "./step3-products";
 import { Step3Schedule } from "./step3-schedule";
 import { Step4Confirm } from "./step4-confirm";
-import type { WizardProfessional, WizardService, WizardSubscription } from "./types";
+import type { WizardProduct, WizardProfessional, WizardService, WizardSubscription } from "./types";
 import { bookAppointmentAsClientAction } from "@/features/appointments/actions";
 
 export function BookingWizard({
@@ -16,6 +17,7 @@ export function BookingWizard({
   unitName,
   services,
   professionals,
+  products,
   subscriptions,
   cancellationWindowHours,
   initialServiceId,
@@ -24,6 +26,7 @@ export function BookingWizard({
   unitName: string;
   services: WizardService[];
   professionals: WizardProfessional[];
+  products: WizardProduct[];
   subscriptions: WizardSubscription[];
   cancellationWindowHours: number;
   initialServiceId?: string;
@@ -34,6 +37,7 @@ export function BookingWizard({
     initialServiceId ? [initialServiceId] : [],
   );
   const [professionalChoice, setProfessionalChoice] = useState<string | "ANY" | null>(null);
+  const [productQuantities, setProductQuantities] = useState<Record<string, number>>({});
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [recurring, setRecurring] = useState(false);
@@ -56,6 +60,21 @@ export function BookingWizard({
     setSelectedServiceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
+  function setProductQuantity(productId: string, quantity: number) {
+    setProductQuantities((prev) => {
+      if (quantity <= 0) {
+        const rest = { ...prev };
+        delete rest[productId];
+        return rest;
+      }
+      return { ...prev, [productId]: quantity };
+    });
+  }
+
+  const selectedProducts = products
+    .filter((p) => (productQuantities[p.id] ?? 0) > 0)
+    .map((p) => ({ ...p, quantity: productQuantities[p.id] }));
+
   async function handleConfirm() {
     if (!selectedDate || !selectedTime || !professionalChoice) return;
     setSubmitting(true);
@@ -65,6 +84,7 @@ export function BookingWizard({
         professionalId: professionalChoice,
         candidateProfessionalIds: professionalChoice === "ANY" ? professionals.map((p) => p.id) : undefined,
         serviceIds: selectedServiceIds,
+        products: selectedProducts.map((p) => ({ productId: p.id, quantity: p.quantity })),
         scheduledDate: selectedDate.toISOString().slice(0, 10),
         startTime: selectedTime,
         couponCode: couponCode || undefined,
@@ -111,6 +131,16 @@ export function BookingWizard({
       )}
 
       {step === 3 && (
+        <Step3Products
+          products={products}
+          quantities={productQuantities}
+          onQuantityChange={setProductQuantity}
+          onContinue={() => setStep(4)}
+          onBack={() => setStep(2)}
+        />
+      )}
+
+      {step === 4 && (
         <Step3Schedule
           professionalIds={professionalIds}
           durationMinutes={totalDuration || 30}
@@ -125,16 +155,17 @@ export function BookingWizard({
           onSelectTime={setSelectedTime}
           onRecurringChange={setRecurring}
           onIntervalChange={setRecurringIntervalDays}
-          onContinue={() => setStep(4)}
-          onBack={() => setStep(2)}
+          onContinue={() => setStep(5)}
+          onBack={() => setStep(3)}
         />
       )}
 
-      {step === 4 && selectedDate && selectedTime && (
+      {step === 5 && selectedDate && selectedTime && (
         <Step4Confirm
           unitName={unitName}
           services={selectedServices}
           professional={professionalForSummary}
+          products={selectedProducts}
           date={selectedDate}
           time={selectedTime}
           totalPrice={totalPrice}
@@ -149,7 +180,7 @@ export function BookingWizard({
           cancellationWindowHours={cancellationWindowHours}
           submitting={submitting}
           onConfirm={handleConfirm}
-          onBack={() => setStep(3)}
+          onBack={() => setStep(4)}
         />
       )}
     </div>

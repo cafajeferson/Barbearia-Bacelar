@@ -278,7 +278,8 @@ model Product {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  sales ProductSale[]
+  sales              ProductSale[]
+  appointmentRequests AppointmentProduct[]
 }
 
 // ---------- Agendamentos ----------
@@ -312,6 +313,7 @@ model Appointment {
   updatedAt             DateTime            @updatedAt
 
   services   AppointmentService[]
+  products   AppointmentProduct[]
   statusLogs AppointmentStatusLog[]
   creditUsage SubscriptionCreditUsage[]
   couponRedemptions CouponRedemption[]
@@ -330,6 +332,21 @@ model AppointmentService {
   durationAtBooking Int
 
   @@id([appointmentId, serviceId])
+}
+
+/// Produtos que o cliente pede pra separar junto com o agendamento (não é
+/// uma venda — ProductSale continua sendo o registro de venda de balcão de
+/// verdade, com comissão etc. Isto aqui é só "separa isso pra mim", que o
+/// profissional vê nos detalhes do atendimento e decide o que fazer.
+model AppointmentProduct {
+  appointmentId  String
+  appointment    Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product     @relation(fields: [productId], references: [id])
+  quantity       Int
+  priceAtBooking Decimal     @db.Decimal(10, 2)
+
+  @@id([appointmentId, productId])
 }
 
 model AppointmentStatusLog {

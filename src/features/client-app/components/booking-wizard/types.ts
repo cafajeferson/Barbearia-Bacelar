@@ -19,3 +19,10 @@ export type WizardSubscription = {
   creditsUsedThisPeriod: number;
   plan: { name: string; creditLimitPerMonth: number };
 };
+
+export type WizardProduct = {
+  id: string;
+  name: string;
+  brand: string | null;
+  price: number;
+};

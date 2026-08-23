@@ -18,10 +18,15 @@ import type { getAgendaMestreData } from "../service";
 import type { AppointmentStatus } from "@/generated/prisma/enums";
 
 type RawAgendaData = Awaited<ReturnType<typeof getAgendaMestreData>>;
-// totalPrice vem como Decimal do Prisma, que não atravessa a fronteira
-// Server -> Client Component — a página converte pra number antes de passar.
+type RawAppointment = RawAgendaData["appointments"][number];
+// totalPrice/priceAtBooking vêm como Decimal do Prisma, que não atravessa a
+// fronteira Server -> Client Component — a página converte pra number antes
+// de passar.
 export type AgendaData = Omit<RawAgendaData, "appointments"> & {
-  appointments: (Omit<RawAgendaData["appointments"][number], "totalPrice"> & { totalPrice: number })[];
+  appointments: (Omit<RawAppointment, "totalPrice" | "products"> & {
+    totalPrice: number;
+    products: (Omit<RawAppointment["products"][number], "priceAtBooking"> & { priceAtBooking: number })[];
+  })[];
 };
 
 const DAY_START = 8 * 60;
@@ -499,6 +504,21 @@ export function CalendarBoard({
                 </Badge>
                 {selected.forceOverlap && <Badge variant="destructive">Sobreposição forçada</Badge>}
               </div>
+              {selected.products.length > 0 && (
+                <div className="rounded-md border border-primary/30 bg-primary/5 p-2">
+                  <p className="mb-1 text-xs font-medium text-primary">Produtos pedidos pelo cliente</p>
+                  <ul className="space-y-0.5">
+                    {selected.products.map((p) => (
+                      <li key={p.productId} className="flex items-center justify-between text-xs">
+                        <span>
+                          {p.quantity}× {p.product.name}
+                        </span>
+                        <span className="text-muted-foreground">{formatBRL(p.quantity * Number(p.priceAtBooking))}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
             <DialogFooter className="sm:justify-between">
               <Button

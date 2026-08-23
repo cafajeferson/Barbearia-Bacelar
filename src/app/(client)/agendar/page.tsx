@@ -3,6 +3,7 @@ import { withAppContext } from "@/server/db/context";
 import { listCatalog } from "@/features/catalog/service";
 import { listActiveProfessionalsForBooking } from "@/features/professionals/service";
 import { getOwnSubscriptions } from "@/features/subscriptions/service";
+import { listProducts } from "@/features/inventory/service";
 import { BookingWizard } from "@/features/client-app/components/booking-wizard";
 
 export default async function AgendarPage({
@@ -14,12 +15,13 @@ export default async function AgendarPage({
   if (!ctx) return null;
   const { serviceId } = await searchParams;
 
-  const [sections, professionals, subscriptions, unit, settings] = await Promise.all([
+  const [sections, professionals, subscriptions, unit, settings, products] = await Promise.all([
     listCatalog({ ctx, onlyActive: true }),
     listActiveProfessionalsForBooking({ ctx }),
     getOwnSubscriptions({ ctx }),
     withAppContext(ctx, (tx) => tx.unit.findFirstOrThrow()),
     withAppContext(ctx, (tx) => tx.systemSettings.findUniqueOrThrow({ where: { id: 1 } })),
+    listProducts({ ctx }),
   ]);
 
   const services = sections.flatMap((s) =>
@@ -38,6 +40,7 @@ export default async function AgendarPage({
       unitName={unit.name}
       services={services}
       professionals={professionals}
+      products={products.map((p) => ({ id: p.id, name: p.name, brand: p.brand, price: Number(p.price) }))}
       subscriptions={subscriptions.map((s) => ({
         id: s.id,
         status: s.status,

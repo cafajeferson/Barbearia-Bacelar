@@ -149,6 +149,7 @@ export async function bookAppointmentAsClientAction(input: {
   professionalId: string | "ANY";
   candidateProfessionalIds?: string[];
   serviceIds: string[];
+  products?: { productId: string; quantity: number }[];
   scheduledDate: string;
   startTime: string;
   couponCode?: string;

@@ -17,6 +17,8 @@ export async function bookAppointmentAsClient(params: {
   professionalId: string | "ANY";
   candidateProfessionalIds?: string[];
   serviceIds: string[];
+  /** Produtos que o cliente pede pra separar — ver AppointmentProduct. */
+  products?: { productId: string; quantity: number }[];
   scheduledDate: Date;
   startTime: string;
   couponCode?: string;
@@ -55,6 +57,7 @@ export async function bookAppointmentAsClient(params: {
     professionalId: params.professionalId,
     candidateProfessionalIds: params.candidateProfessionalIds,
     serviceIds: params.serviceIds,
+    products: params.products,
     scheduledDate: params.scheduledDate,
     startTime: params.startTime,
     source: "APP",

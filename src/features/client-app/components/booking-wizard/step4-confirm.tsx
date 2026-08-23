@@ -7,12 +7,13 @@ import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatBRL } from "@/shared/lib/format";
 import { validateCouponAction } from "@/features/appointments/actions";
-import type { WizardProfessional, WizardService, WizardSubscription } from "./types";
+import type { WizardProduct, WizardProfessional, WizardService, WizardSubscription } from "./types";
 
 export function Step4Confirm({
   unitName,
   services,
   professional,
+  products,
   date,
   time,
   totalPrice,
@@ -32,6 +33,7 @@ export function Step4Confirm({
   unitName: string;
   services: WizardService[];
   professional: WizardProfessional | { name: string; id: "ANY" };
+  products: (WizardProduct & { quantity: number })[];
   date: Date;
   time: string;
   totalPrice: number;
@@ -89,6 +91,12 @@ export function Step4Confirm({
           value={`${new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).format(date)} às ${time}`}
         />
         <Row label="Duração estimada" value={`${totalDuration} min`} />
+        {products.length > 0 && (
+          <Row
+            label="Produtos separados"
+            value={products.map((p) => `${p.quantity}× ${p.name}`).join(", ")}
+          />
+        )}
         <div className="flex items-center justify-between border-t pt-2 font-semibold">
           <span>Total</span>
           <span>{formatBRL(totalPrice)}</span>

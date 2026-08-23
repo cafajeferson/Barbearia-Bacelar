@@ -29,6 +29,8 @@ export async function createAppointment(params: {
   candidateProfessionalIds?: string[];
   clientId?: string;
   serviceIds: string[];
+  /** Produtos que o cliente pede pra separar — não é uma venda (ver AppointmentProduct). */
+  products?: { productId: string; quantity: number }[];
   scheduledDate: Date;
   startTime: string;
   source: AppointmentSource;
@@ -54,6 +56,18 @@ export async function createAppointment(params: {
   const durationMinutes = services.reduce((sum, s) => sum + s.durationMinutes, 0);
   const totalPrice = services.reduce((sum, s) => sum + Number(s.price), 0);
   const endTime = addMinutesToTime(params.startTime, durationMinutes);
+
+  const requestedProducts = params.products?.filter((p) => p.quantity > 0) ?? [];
+  const productPriceById = new Map<string, number>();
+  if (requestedProducts.length > 0) {
+    const products = await withAppContext(ctx, (tx) =>
+      tx.product.findMany({ where: { id: { in: requestedProducts.map((p) => p.productId) }, active: true } }),
+    );
+    if (products.length !== requestedProducts.length) {
+      throw new Error("Um ou mais produtos não existem ou estão inativos.");
+    }
+    for (const p of products) productPriceById.set(p.id, Number(p.price));
+  }
 
   let clientId: string;
   if (ctx.role === "CLIENT") {
@@ -120,6 +134,15 @@ export async function createAppointment(params: {
               durationAtBooking: s.durationMinutes,
             })),
           },
+          products: requestedProducts.length
+            ? {
+                create: requestedProducts.map((p) => ({
+                  productId: p.productId,
+                  quantity: p.quantity,
+                  priceAtBooking: productPriceById.get(p.productId)!,
+                })),
+              }
+            : undefined,
         },
       });
 
@@ -256,6 +279,7 @@ export async function getAgendaMestreData(params: { ctx: AuthenticatedContext; d
         // no card — mesmo critério já usado em /clientes.
         client: { include: { subscriptions: { where: { status: "ACTIVE" }, take: 1 } } },
         services: { include: { service: true } },
+        products: { include: { product: true } },
       },
     });
     const blockedSlots = await tx.blockedSlot.findMany({ where: { date: params.date } });
@@ -282,7 +306,12 @@ export async function listAppointments(params: {
             : undefined,
         status: params.status ? { in: params.status as never[] } : undefined,
       },
-      include: { services: { include: { service: true } }, client: true, professional: true },
+      include: {
+        services: { include: { service: true } },
+        products: { include: { product: true } },
+        client: true,
+        professional: true,
+      },
       orderBy: [{ scheduledDate: "asc" }, { startTime: "asc" }],
     }),
   );
