@@ -36,6 +36,10 @@ enum AppointmentSource {
 }
 
 enum RecurringSeriesStatus {
+  /// Cliente pediu pelo app, aguardando o admin aceitar/recusar — o job
+  /// gerador (recurringSeriesGenerator) ignora séries neste status, só
+  /// materializa ocorrências futuras depois de ACTIVE.
+  PENDING
   ACTIVE
   PAUSED
   CANCELLED

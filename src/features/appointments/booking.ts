@@ -122,7 +122,10 @@ export async function bookAppointmentAsClient(params: {
           startDate: params.scheduledDate,
           nextRunDate,
           occurrencesGenerated: 1,
-          status: "ACTIVE",
+          // Pedido do cliente entra como PENDING — só o admin aceitando (ver
+          // approveRecurringSeries) libera o gerador a materializar as
+          // próximas ocorrências. A visita já marcada agora não é afetada.
+          status: "PENDING",
           services: { create: params.serviceIds.map((serviceId) => ({ serviceId })) },
         },
       });
