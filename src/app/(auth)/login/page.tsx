@@ -89,10 +89,10 @@ function LoginForm() {
       <div className="w-full max-w-sm space-y-4 rounded-lg border border-border bg-card p-8">
         <div className="flex flex-col items-center gap-3 pb-2">
           <Image
-            src="/brand/logo.jpg"
+            src="/brand/icon-any.png"
             alt="Barbearia Bacelar"
-            width={72}
-            height={72}
+            width={128}
+            height={128}
             priority
             className="rounded-full"
           />
