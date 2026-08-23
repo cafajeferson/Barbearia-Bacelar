@@ -21,6 +21,30 @@ const SLOT_STEP_MINUTES = 15;
  * o bastante para o fluxo de agendamento do cliente — não é leitura bruta
  * de WeeklyAvailability/BlockedSlot, que não têm policy de RLS para CLIENT.
  */
+/** Núcleo puro do cálculo (sem banco) — reaproveitado tanto pro caso de 1 profissional quanto pra união de vários. */
+function computeAvailableSlots(
+  windows: { startTime: string; endTime: string }[],
+  busy: { startTime: string; endTime: string }[],
+  durationMinutes: number,
+): string[] {
+  const available: string[] = [];
+  for (const window of windows) {
+    let cursor = timeToMinutes(window.startTime);
+    const windowEnd = timeToMinutes(window.endTime);
+
+    while (cursor + durationMinutes <= windowEnd) {
+      const slotStart = addMinutesToTime("00:00", cursor);
+      const slotEnd = addMinutesToTime(slotStart, durationMinutes);
+
+      const conflicts = busy.some((b) => rangesOverlap(slotStart, slotEnd, b.startTime, b.endTime));
+      if (!conflicts) available.push(slotStart);
+
+      cursor += SLOT_STEP_MINUTES;
+    }
+  }
+  return available;
+}
+
 export async function getAvailableSlots(params: {
   professionalId: string;
   date: Date;
@@ -47,27 +71,7 @@ export async function getAvailableSlots(params: {
       select: { startTime: true, endTime: true },
     });
 
-    const busy = [...appointments, ...blocks];
-    const available: string[] = [];
-
-    for (const window of windows) {
-      let cursor = timeToMinutes(window.startTime);
-      const windowEnd = timeToMinutes(window.endTime);
-
-      while (cursor + durationMinutes <= windowEnd) {
-        const slotStart = addMinutesToTime("00:00", cursor);
-        const slotEnd = addMinutesToTime(slotStart, durationMinutes);
-
-        const conflicts = busy.some((b) =>
-          rangesOverlap(slotStart, slotEnd, b.startTime, b.endTime),
-        );
-        if (!conflicts) available.push(slotStart);
-
-        cursor += SLOT_STEP_MINUTES;
-      }
-    }
-
-    return available;
+    return computeAvailableSlots(windows, [...appointments, ...blocks], durationMinutes);
   });
 }
 
@@ -83,18 +87,59 @@ export async function getDayAvailabilityLevel(params: {
   return "MUITOS";
 }
 
-/** União dos horários livres de vários profissionais (usado quando o cliente escolhe "Qualquer Profissional"). */
+/**
+ * União dos horários livres de vários profissionais (usado quando o
+ * cliente escolhe "Qualquer Profissional") — dispara toda vez que o
+ * cliente clica num dia do calendário do wizard, então é caminho quente.
+ *
+ * Antes chamava getAvailableSlots (webAppContext próprio) uma vez POR
+ * PROFISSIONAL CANDIDATO em série — com "Qualquer Profissional" e 3
+ * barbeiros isso já eram 3 transações inteiras (~5 idas-e-voltas cada)
+ * só pra abrir os horários de UM dia. Mesma causa (e mesma correção) do
+ * getMonthAvailabilityLevels: uma consulta só buscando todo mundo de
+ * uma vez, união calculada em memória.
+ */
 export async function getUnionAvailableSlots(params: {
   professionalIds: string[];
   date: Date;
   durationMinutes: number;
 }): Promise<string[]> {
-  const set = new Set<string>();
-  for (const professionalId of params.professionalIds) {
-    const slots = await getAvailableSlots({ professionalId, date: params.date, durationMinutes: params.durationMinutes });
-    for (const s of slots) set.add(s);
+  const { professionalIds, date, durationMinutes } = params;
+  if (professionalIds.length === 0) return [];
+  if (professionalIds.length === 1) {
+    return getAvailableSlots({ professionalId: professionalIds[0], date, durationMinutes });
   }
-  return Array.from(set).sort();
+
+  const weekday = getCalendarWeekday(date);
+
+  return withAppContext({ role: "ADMIN", userId: null }, async (tx) => {
+    const windows = await tx.weeklyAvailability.findMany({
+      where: { professionalId: { in: professionalIds }, weekday, active: true },
+    });
+    const appointments = await tx.appointment.findMany({
+      where: {
+        professionalId: { in: professionalIds },
+        scheduledDate: date,
+        status: { in: ["SCHEDULED", "CONFIRMED", "IN_PROGRESS"] },
+      },
+      select: { professionalId: true, startTime: true, endTime: true },
+    });
+    const blocks = await tx.blockedSlot.findMany({
+      where: { professionalId: { in: professionalIds }, date },
+      select: { professionalId: true, startTime: true, endTime: true },
+    });
+
+    const set = new Set<string>();
+    for (const professionalId of professionalIds) {
+      const ownWindows = windows.filter((w) => w.professionalId === professionalId);
+      const busy = [
+        ...appointments.filter((a) => a.professionalId === professionalId),
+        ...blocks.filter((b) => b.professionalId === professionalId),
+      ];
+      for (const s of computeAvailableSlots(ownWindows, busy, durationMinutes)) set.add(s);
+    }
+    return Array.from(set).sort();
+  });
 }
 
 /**
