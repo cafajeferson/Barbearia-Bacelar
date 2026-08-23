@@ -287,6 +287,25 @@ export async function getAgendaMestreData(params: { ctx: AuthenticatedContext; d
   });
 }
 
+/** Contagem de agendamentos/concluídos por dia — visão "Mês" da Agenda Mestre. */
+export async function getAgendaMonthSummary(params: { ctx: AuthenticatedContext; monthStart: Date; monthEnd: Date }) {
+  return withAppContext(params.ctx, async (tx) => {
+    const rows = await tx.appointment.findMany({
+      where: { scheduledDate: { gte: params.monthStart, lte: params.monthEnd }, status: { not: "CANCELLED" } },
+      select: { scheduledDate: true, status: true },
+    });
+    const byDay = new Map<string, { total: number; completed: number }>();
+    for (const r of rows) {
+      const key = r.scheduledDate.toISOString().slice(0, 10);
+      const entry = byDay.get(key) ?? { total: 0, completed: 0 };
+      entry.total += 1;
+      if (r.status === "COMPLETED") entry.completed += 1;
+      byDay.set(key, entry);
+    }
+    return byDay;
+  });
+}
+
 export async function listAppointments(params: {
   ctx: AuthenticatedContext;
   professionalId?: string;
