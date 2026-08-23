@@ -4,6 +4,7 @@ export type WizardService = {
   price: number;
   durationMinutes: number;
   genderTag: string | null;
+  imageUrl: string | null;
 };
 
 export type WizardProfessional = {
@@ -25,4 +26,5 @@ export type WizardProduct = {
   name: string;
   brand: string | null;
   price: number;
+  imageUrl: string | null;
 };

@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+import { Scissors } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatBRL } from "@/shared/lib/format";
 import type { WizardService } from "./types";
@@ -27,9 +29,24 @@ export function Step1Service({
               selectedIds.includes(s.id) ? "border-primary bg-primary/10" : ""
             }`}
           >
-            <div>
-              <p className="font-medium">{s.name}</p>
-              <p className="text-xs text-muted-foreground">{s.durationMinutes} min</p>
+            <div className="flex items-center gap-3">
+              {s.imageUrl ? (
+                <Image
+                  src={s.imageUrl}
+                  alt={s.name}
+                  width={48}
+                  height={48}
+                  className="h-12 w-12 shrink-0 rounded-md object-cover"
+                />
+              ) : (
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-secondary">
+                  <Scissors className="h-5 w-5 text-muted-foreground" />
+                </div>
+              )}
+              <div>
+                <p className="font-medium">{s.name}</p>
+                <p className="text-xs text-muted-foreground">{s.durationMinutes} min</p>
+              </div>
             </div>
             <span className="font-semibold">{formatBRL(s.price)}</span>
           </button>

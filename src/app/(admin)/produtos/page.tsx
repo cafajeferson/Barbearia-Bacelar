@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { AlertTriangle } from "lucide-react";
+import Image from "next/image";
+import { AlertTriangle, PackageOpen } from "lucide-react";
 import { getAuthContext } from "@/server/auth/getAuthContext";
 import { listProducts, getInventorySummary } from "@/features/inventory/service";
 import { Card } from "@/components/ui/card";
@@ -82,12 +83,29 @@ export default async function ProdutosPage({
             {products.map((p) => (
               <TableRow key={p.id}>
                 <TableCell>
-                  <p className="font-medium">{p.name}</p>
-                  {(p.brand || p.category) && (
-                    <p className="text-xs text-muted-foreground">
-                      {[p.brand, p.category].filter(Boolean).join(" · ")}
-                    </p>
-                  )}
+                  <div className="flex items-center gap-3">
+                    {p.imageUrl ? (
+                      <Image
+                        src={p.imageUrl}
+                        alt={p.name}
+                        width={36}
+                        height={36}
+                        className="h-9 w-9 shrink-0 rounded-md object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-secondary">
+                        <PackageOpen className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    )}
+                    <div>
+                      <p className="font-medium">{p.name}</p>
+                      {(p.brand || p.category) && (
+                        <p className="text-xs text-muted-foreground">
+                          {[p.brand, p.category].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </TableCell>
                 <TableCell>{formatBRL(Number(p.price))}</TableCell>
                 <TableCell>

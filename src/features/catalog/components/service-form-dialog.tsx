@@ -26,6 +26,7 @@ type ExistingService = {
   description: string | null;
   durationMinutes: number;
   price: number;
+  imageUrl: string | null;
   genderTag: string | null;
   featured: boolean;
 };
@@ -43,6 +44,7 @@ export function ServiceFormDialog({
   const [description, setDescription] = useState(service?.description ?? "");
   const [durationMinutes, setDurationMinutes] = useState(String(service?.durationMinutes ?? 30));
   const [price, setPrice] = useState(String(service?.price ?? ""));
+  const [imageUrl, setImageUrl] = useState(service?.imageUrl ?? "");
   const [genderTag, setGenderTag] = useState(service?.genderTag ?? "UNISSEX");
   const [featured, setFeatured] = useState(service?.featured ?? false);
   const [submitting, setSubmitting] = useState(false);
@@ -62,6 +64,7 @@ export function ServiceFormDialog({
           description: description || undefined,
           durationMinutes: Number(durationMinutes),
           price: Number(price),
+          imageUrl: imageUrl || undefined,
           genderTag: genderValue,
           featured,
         });
@@ -73,6 +76,7 @@ export function ServiceFormDialog({
           description: description || undefined,
           durationMinutes: Number(durationMinutes),
           price: Number(price),
+          imageUrl: imageUrl || undefined,
           genderTag: genderValue,
           featured,
         });
@@ -135,6 +139,15 @@ export function ServiceFormDialog({
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="service-image">URL da imagem</Label>
+            <Input
+              id="service-image"
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+              placeholder="/catalog/servico-x.png"
+            />
           </div>
           <div className="flex items-center justify-between rounded-md border p-3">
             <p className="text-sm font-medium">Destaque</p>

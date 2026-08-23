@@ -31,6 +31,7 @@ export default async function AgendarPage({
       price: Number(sv.price),
       durationMinutes: sv.durationMinutes,
       genderTag: sv.genderTag,
+      imageUrl: sv.imageUrl,
     })),
   );
 
@@ -40,7 +41,7 @@ export default async function AgendarPage({
       unitName={unit.name}
       services={services}
       professionals={professionals}
-      products={products.map((p) => ({ id: p.id, name: p.name, brand: p.brand, price: Number(p.price) }))}
+      products={products.map((p) => ({ id: p.id, name: p.name, brand: p.brand, price: Number(p.price), imageUrl: p.imageUrl }))}
       subscriptions={subscriptions.map((s) => ({
         id: s.id,
         status: s.status,

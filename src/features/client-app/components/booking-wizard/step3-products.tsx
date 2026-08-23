@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Minus, Plus, PackageOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatBRL } from "@/shared/lib/format";
@@ -37,12 +38,27 @@ export function Step3Products({
             const qty = quantities[product.id] ?? 0;
             return (
               <div key={product.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{product.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {product.brand ? `${product.brand} · ` : ""}
-                    {formatBRL(product.price)}
-                  </p>
+                <div className="flex min-w-0 items-center gap-3">
+                  {product.imageUrl ? (
+                    <Image
+                      src={product.imageUrl}
+                      alt={product.name}
+                      width={48}
+                      height={48}
+                      className="h-12 w-12 shrink-0 rounded-md object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-secondary">
+                      <PackageOpen className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{product.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {product.brand ? `${product.brand} · ` : ""}
+                      {formatBRL(product.price)}
+                    </p>
+                  </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <Button

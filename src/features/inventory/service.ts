@@ -11,6 +11,7 @@ export async function createProduct(params: {
   brand?: string;
   category?: string;
   sku?: string;
+  imageUrl?: string;
   price: number;
   cost?: number;
   stock?: number;
@@ -28,6 +29,7 @@ export async function updateProduct(params: {
   name?: string;
   brand?: string;
   category?: string;
+  imageUrl?: string;
   price?: number;
   cost?: number;
   stock?: number;

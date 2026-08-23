@@ -269,6 +269,7 @@ model Product {
   brand          String?
   category       String?
   sku            String?  @unique
+  imageUrl       String?
   price          Decimal  @db.Decimal(10, 2)
   cost           Decimal? @db.Decimal(10, 2)
   stock          Int      @default(0)

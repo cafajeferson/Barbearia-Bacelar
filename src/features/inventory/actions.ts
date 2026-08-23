@@ -15,6 +15,7 @@ export async function createProductAction(input: {
   brand?: string;
   category?: string;
   sku?: string;
+  imageUrl?: string;
   price: number;
   cost?: number;
   stock?: number;
@@ -32,6 +33,7 @@ export async function updateProductAction(input: {
   name?: string;
   brand?: string;
   category?: string;
+  imageUrl?: string;
   price?: number;
   cost?: number;
   stock?: number;

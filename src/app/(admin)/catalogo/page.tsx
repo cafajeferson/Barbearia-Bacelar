@@ -1,4 +1,5 @@
-import { Star } from "lucide-react";
+import Image from "next/image";
+import { Star, Scissors } from "lucide-react";
 import { getAuthContext } from "@/server/auth/getAuthContext";
 import { listCatalog } from "@/features/catalog/service";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +45,19 @@ export default async function CatalogoPage() {
                 section.services.map((s) => (
                   <div key={s.id} className="flex items-center justify-between gap-3 px-4 py-3">
                     <div className="flex min-w-0 items-center gap-3">
+                      {s.imageUrl ? (
+                        <Image
+                          src={s.imageUrl}
+                          alt={s.name}
+                          width={36}
+                          height={36}
+                          className="h-9 w-9 shrink-0 rounded-md object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-secondary">
+                          <Scissors className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                      )}
                       {s.featured && <Star className="h-4 w-4 shrink-0 fill-primary text-primary" />}
                       <div className="min-w-0">
                         <p className="truncate font-medium">

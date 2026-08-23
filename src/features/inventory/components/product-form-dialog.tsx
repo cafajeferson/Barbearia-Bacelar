@@ -23,6 +23,7 @@ type ExistingProduct = {
   name: string;
   brand: string | null;
   category: string | null;
+  imageUrl: string | null;
   price: number;
   stock: number;
   lowStockAlert: number;
@@ -36,6 +37,7 @@ export function ProductFormDialog({ product }: { product?: ExistingProduct }) {
   const [name, setName] = useState(product?.name ?? "");
   const [brand, setBrand] = useState(product?.brand ?? "");
   const [category, setCategory] = useState(product?.category ?? "");
+  const [imageUrl, setImageUrl] = useState(product?.imageUrl ?? "");
   const [price, setPrice] = useState(String(product?.price ?? ""));
   const [stock, setStock] = useState(String(product?.stock ?? 0));
   const [lowStockAlert, setLowStockAlert] = useState(String(product?.lowStockAlert ?? 5));
@@ -56,6 +58,7 @@ export function ProductFormDialog({ product }: { product?: ExistingProduct }) {
         name,
         brand: brand || undefined,
         category: category || undefined,
+        imageUrl: imageUrl || undefined,
         price: Number(price),
         stock: Number(stock),
         lowStockAlert: Number(lowStockAlert),
@@ -122,6 +125,15 @@ export function ProductFormDialog({ product }: { product?: ExistingProduct }) {
               <Label htmlFor="product-low-stock">Alerta em</Label>
               <Input id="product-low-stock" type="number" value={lowStockAlert} onChange={(e) => setLowStockAlert(e.target.value)} />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="product-image">URL da imagem</Label>
+            <Input
+              id="product-image"
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+              placeholder="/catalog/produto-x.png"
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="product-commission">Comissão sobre venda (%)</Label>
