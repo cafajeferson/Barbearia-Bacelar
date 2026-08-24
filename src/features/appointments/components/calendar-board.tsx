@@ -441,8 +441,13 @@ export function CalendarBoard({
                     }}
                     title={`${a.client.name} — ${a.services.map((s) => s.service.name).join(" + ")}`}
                   >
+                    {isSubscriber && (
+                      <Crown
+                        className="absolute right-1 top-0.5 h-3 w-3 shrink-0 fill-current"
+                        style={{ color: prof.color }}
+                      />
+                    )}
                     <p className={`flex min-w-0 items-center gap-1 font-medium ${inProgress ? "uppercase" : ""}`}>
-                      {isSubscriber && <Crown className="h-3 w-3 shrink-0" style={{ color: prof.color }} />}
                       <span className="min-w-0 truncate">{a.client.name}</span>
                       {a.forceOverlap && <span className="shrink-0">⚠</span>}
                     </p>
