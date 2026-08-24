@@ -202,6 +202,7 @@ export async function getOwnDayData(params: { ctx: AuthenticatedContext; date: D
         client: { include: { subscriptions: { where: { status: "ACTIVE" }, take: 1 } } },
         services: { include: { service: true } },
         products: { include: { product: true } },
+        couponRedemptions: { include: { coupon: true } },
       },
       orderBy: { startTime: "asc" },
     });

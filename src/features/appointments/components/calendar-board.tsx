@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Crown } from "lucide-react";
+import { Crown, Ticket } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -23,9 +23,15 @@ type RawAppointment = RawAgendaData["appointments"][number];
 // fronteira Server -> Client Component — a página converte pra number antes
 // de passar.
 export type AgendaData = Omit<RawAgendaData, "appointments"> & {
-  appointments: (Omit<RawAppointment, "totalPrice" | "products"> & {
+  appointments: (Omit<RawAppointment, "totalPrice" | "products" | "couponRedemptions"> & {
     totalPrice: number;
     products: (Omit<RawAppointment["products"][number], "priceAtBooking"> & { priceAtBooking: number })[];
+    couponRedemptions: (Omit<RawAppointment["couponRedemptions"][number], "discountApplied" | "coupon"> & {
+      discountApplied: number;
+      coupon: Omit<RawAppointment["couponRedemptions"][number]["coupon"], "discountValue"> & {
+        discountValue: number;
+      };
+    })[];
   })[];
 };
 
@@ -426,6 +432,7 @@ export function CalendarBoard({
                 const faded = a.status === "COMPLETED" || a.status === "NO_SHOW";
                 const inProgress = a.status === "IN_PROGRESS";
                 const isSubscriber = a.client.subscriptions.length > 0;
+                const redemption = a.couponRedemptions[0];
                 return (
                   <div
                     key={a.id}
@@ -447,7 +454,19 @@ export function CalendarBoard({
                         style={{ color: prof.color }}
                       />
                     )}
-                    <p className={`flex min-w-0 items-center gap-1 font-medium ${inProgress ? "uppercase" : ""}`}>
+                    {redemption && (
+                      <span
+                        className="absolute left-1 top-0.5 flex items-center gap-0.5 text-[9px] font-semibold"
+                        style={{ color: prof.color }}
+                        title={`Cupom ${redemption.coupon.code}`}
+                      >
+                        <Ticket className="h-2.5 w-2.5 shrink-0" />
+                        {redemption.coupon.discountType === "PERCENT"
+                          ? `${redemption.coupon.discountValue}%`
+                          : formatBRL(redemption.coupon.discountValue)}
+                      </span>
+                    )}
+                    <p className={`flex min-w-0 items-center gap-1 font-medium ${inProgress ? "uppercase" : ""} ${redemption ? "pl-7" : ""}`}>
                       <span className="min-w-0 truncate">{a.client.name}</span>
                       {a.forceOverlap && <span className="shrink-0">⚠</span>}
                     </p>

@@ -292,6 +292,9 @@ export async function getAgendaMestreData(params: {
         client: { include: { subscriptions: { where: { status: "ACTIVE" }, take: 1 } } },
         services: { include: { service: true } },
         products: { include: { product: true } },
+        // pra mostrar o selo de cupom (com a porcentagem) direto no card,
+        // sem precisar abrir o agendamento — mesmo critério da coroa acima.
+        couponRedemptions: { include: { coupon: true } },
       },
     });
     const blockedSlots = await tx.blockedSlot.findMany({ where: { date: params.date } });

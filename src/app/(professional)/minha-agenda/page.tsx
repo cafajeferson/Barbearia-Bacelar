@@ -132,6 +132,11 @@ async function DayView({
       ...a,
       totalPrice: Number(a.totalPrice),
       products: a.products.map((p) => ({ ...p, priceAtBooking: Number(p.priceAtBooking) })),
+      couponRedemptions: a.couponRedemptions.map((r) => ({
+        ...r,
+        discountApplied: Number(r.discountApplied),
+        coupon: { ...r.coupon, discountValue: Number(r.coupon.discountValue) },
+      })),
     })),
     blockedSlots,
   };

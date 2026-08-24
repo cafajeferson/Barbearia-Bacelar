@@ -27,12 +27,20 @@ export async function withAppContext<T>(
   ctx: AppContext,
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
-  return prisma.$transaction(async (tx) => {
-    // As duas set_config num único round-trip (não duas) — com o Supabase
-    // em us-east-1 e o app no Brasil, cada ida-e-volta custa uns
-    // 200-400ms, e toda página chama withAppContext várias vezes; isso
-    // sozinho já corta uma viagem inteira por transação em todo o app.
-    await tx.$executeRaw`SELECT set_config('app.role', ${ctx.role}, true), set_config('app.user_id', ${ctx.userId ?? ""}, true)`;
-    return fn(tx);
-  });
+  return prisma.$transaction(
+    async (tx) => {
+      // As duas set_config num único round-trip (não duas) — com o Supabase
+      // em us-east-1 e o app no Brasil, cada ida-e-volta custa uns
+      // 200-400ms, e toda página chama withAppContext várias vezes; isso
+      // sozinho já corta uma viagem inteira por transação em todo o app.
+      await tx.$executeRaw`SELECT set_config('app.role', ${ctx.role}, true), set_config('app.user_id', ${ctx.userId ?? ""}, true)`;
+      return fn(tx);
+    },
+    // maxWait maior que o default (2s) — o pool local agora tem teto
+    // (max:5, ver server/db/client.ts) pra não estourar o pooler em modo
+    // sessão do Supabase, então sob pico é esperado ESPERAR uma conexão
+    // liberar em vez de abrir mais uma; 2s some rápido com a latência até
+    // us-east-1, e um estouro aqui derruba a página inteira (P2028).
+    { maxWait: 10_000, timeout: 10_000 },
+  );
 }
