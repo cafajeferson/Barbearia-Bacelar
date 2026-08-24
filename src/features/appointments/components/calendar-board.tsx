@@ -470,7 +470,7 @@ export function CalendarBoard({
                           : formatBRL(redemption.coupon.discountValue)}
                       </span>
                     )}
-                    <div className="h-full w-full overflow-hidden">
+                    <div className={`h-full w-full overflow-hidden ${redemption ? "pt-1.5" : ""}`}>
                       <p className={`flex min-w-0 items-center gap-1 font-medium ${inProgress ? "uppercase" : ""}`}>
                         <span className="min-w-0 truncate">{a.client.name}</span>
                         {a.forceOverlap && <span className="shrink-0">⚠</span>}
