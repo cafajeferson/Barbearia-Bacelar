@@ -11,11 +11,14 @@ export function MonthGrid({
   year,
   month, // 0-indexed
   summary,
+  unitId,
 }: {
   year: number;
   month: number;
   summary: Map<string, { total: number; completed: number }>;
+  unitId?: string;
 }) {
+  const unitQs = unitId ? `&unit=${unitId}` : "";
   const firstOfMonth = new Date(year, month, 1);
   const firstWeekday = firstOfMonth.getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -56,7 +59,7 @@ export function MonthGrid({
           return (
             <Link
               key={i}
-              href={`/agenda?date=${iso}&view=day`}
+              href={`/agenda?date=${iso}&view=day${unitQs}`}
               className={cn(
                 "flex min-h-24 flex-col gap-1 border-b border-r p-2 text-sm transition-colors hover:bg-accent",
                 (i + 1) % 7 === 0 && "border-r-0",

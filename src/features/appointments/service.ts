@@ -269,11 +269,14 @@ export async function cancelAppointment(params: {
 }
 
 /** Dados da Agenda Mestre: profissionais + agendamentos + bloqueios do dia. */
-export async function getAgendaMestreData(params: { ctx: AuthenticatedContext; date: Date }) {
+export async function getAgendaMestreData(params: { ctx: AuthenticatedContext; date: Date; unitId?: string }) {
   return withAppContext(params.ctx, async (tx) => {
-    const professionals = await tx.professional.findMany({ where: { active: true }, orderBy: { name: "asc" } });
+    const professionals = await tx.professional.findMany({
+      where: { active: true, units: params.unitId ? { some: { unitId: params.unitId } } : undefined },
+      orderBy: { name: "asc" },
+    });
     const appointmentsList = await tx.appointment.findMany({
-      where: { scheduledDate: params.date, status: { not: "CANCELLED" } },
+      where: { scheduledDate: params.date, status: { not: "CANCELLED" }, unitId: params.unitId },
       include: {
         // subscriptions ACTIVE só pra decidir o ícone de assinante (coroa)
         // no card — mesmo critério já usado em /clientes.
@@ -288,10 +291,19 @@ export async function getAgendaMestreData(params: { ctx: AuthenticatedContext; d
 }
 
 /** Contagem de agendamentos/concluídos por dia — visão "Mês" da Agenda Mestre. */
-export async function getAgendaMonthSummary(params: { ctx: AuthenticatedContext; monthStart: Date; monthEnd: Date }) {
+export async function getAgendaMonthSummary(params: {
+  ctx: AuthenticatedContext;
+  monthStart: Date;
+  monthEnd: Date;
+  unitId?: string;
+}) {
   return withAppContext(params.ctx, async (tx) => {
     const rows = await tx.appointment.findMany({
-      where: { scheduledDate: { gte: params.monthStart, lte: params.monthEnd }, status: { not: "CANCELLED" } },
+      where: {
+        scheduledDate: { gte: params.monthStart, lte: params.monthEnd },
+        status: { not: "CANCELLED" },
+        unitId: params.unitId,
+      },
       select: { scheduledDate: true, status: true },
     });
     const byDay = new Map<string, { total: number; completed: number }>();

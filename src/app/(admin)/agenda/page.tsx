@@ -20,23 +20,45 @@ function parseDateParam(value: string | undefined): Date {
   return d;
 }
 
+/** "Período" da barra global (topo do admin) — só a Agenda Mestre reage a ele por enquanto. */
+function resolveFromPeriod(period: string | undefined): { date: Date; view: "day" | "month" } | null {
+  if (!period || period === "all") return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (period === "current") return { date: new Date(today.getFullYear(), today.getMonth(), 1), view: "month" };
+  if (period === "prev") return { date: new Date(today.getFullYear(), today.getMonth() - 1, 1), view: "month" };
+  if (period === "next") return { date: new Date(today.getFullYear(), today.getMonth() + 1, 1), view: "month" };
+  return null;
+}
+
 export default async function AgendaMestrePage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; view?: string }>;
+  searchParams: Promise<{ date?: string; view?: string; period?: string; unit?: string }>;
 }) {
   const ctx = await getAuthContext();
   if (!ctx) return null;
 
-  const { date: dateParam, view: viewParam } = await searchParams;
-  const view = viewParam === "month" ? "month" : "day";
-  const date = parseDateParam(dateParam);
+  const { date: dateParam, view: viewParam, period, unit: unitParam } = await searchParams;
+  const unitId = unitParam && unitParam !== "all" ? unitParam : undefined;
+
+  // date/view explícitos (setados ao navegar dia a dia, clicar num dia do
+  // mês, etc.) sempre ganham — "período" só decide o padrão quando a URL
+  // ainda não tem uma data própria (ver AdminTopbar, que limpa date/view
+  // ao trocar o período pra garantir essa prioridade).
+  const fromPeriod = !dateParam && !viewParam ? resolveFromPeriod(period) : null;
+  const view = fromPeriod?.view ?? (viewParam === "month" ? "month" : "day");
+  const date = fromPeriod?.date ?? parseDateParam(dateParam);
   const dateISO = toISODate(date);
 
   const [unit, professionals] = await Promise.all([
     withAppContext(ctx, (tx) => tx.unit.findFirstOrThrow()),
     withAppContext(ctx, (tx) =>
-      tx.professional.findMany({ where: { active: true }, select: { id: true, name: true, color: true }, orderBy: { name: "asc" } }),
+      tx.professional.findMany({
+        where: { active: true, units: unitId ? { some: { unitId } } : undefined },
+        select: { id: true, name: true, color: true },
+        orderBy: { name: "asc" },
+      }),
     ),
   ]);
 
@@ -57,7 +79,7 @@ export default async function AgendaMestrePage({
           <NewAppointmentDialog professionals={professionals} defaultDate={dateISO} unitId={unit.id} />
           <div className="ml-1 flex items-center overflow-hidden rounded-md border">
             <Link
-              href={`/agenda?date=${dateISO}&view=day`}
+              href={`/agenda?date=${dateISO}&view=day${unitId ? `&unit=${unitId}` : ""}`}
               className={cn(
                 "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium",
                 view === "day" ? "bg-primary text-primary-foreground" : "hover:bg-accent",
@@ -66,7 +88,7 @@ export default async function AgendaMestrePage({
               <CalendarDays className="h-4 w-4" /> Dia
             </Link>
             <Link
-              href={`/agenda?date=${dateISO}&view=month`}
+              href={`/agenda?date=${dateISO}&view=month${unitId ? `&unit=${unitId}` : ""}`}
               className={cn(
                 "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium",
                 view === "month" ? "bg-primary text-primary-foreground" : "hover:bg-accent",
@@ -79,9 +101,9 @@ export default async function AgendaMestrePage({
       </div>
 
       {view === "day" ? (
-        <DayView ctx={ctx} date={date} dateISO={dateISO} isToday={isToday} unitId={unit.id} />
+        <DayView ctx={ctx} date={date} dateISO={dateISO} isToday={isToday} unitId={unit.id} unitFilter={unitId} />
       ) : (
-        <MonthView ctx={ctx} date={date} />
+        <MonthView ctx={ctx} date={date} unitId={unitId} />
       )}
     </main>
   );
@@ -93,20 +115,23 @@ async function DayView({
   dateISO,
   isToday,
   unitId,
+  unitFilter,
 }: {
   ctx: Awaited<ReturnType<typeof getAuthContext>>;
   date: Date;
   dateISO: string;
   isToday: boolean;
   unitId: string;
+  unitFilter: string | undefined;
 }) {
   if (!ctx) return null;
   const prevDate = new Date(date);
   prevDate.setDate(prevDate.getDate() - 1);
   const nextDate = new Date(date);
   nextDate.setDate(nextDate.getDate() + 1);
+  const unitQs = unitFilter ? `&unit=${unitFilter}` : "";
 
-  const rawData = await getAgendaMestreData({ ctx, date });
+  const rawData = await getAgendaMestreData({ ctx, date, unitId: unitFilter });
   // totalPrice/priceAtBooking (Decimal) não atravessam a fronteira Server -> Client Component.
   const data = {
     ...rawData,
@@ -127,16 +152,16 @@ async function DayView({
     <>
       <div className="flex flex-col items-center gap-1">
         <div className="flex items-center gap-4">
-          <Link href={`/agenda?date=${toISODate(prevDate)}&view=day`} className="rounded-md border p-1.5 hover:bg-accent">
+          <Link href={`/agenda?date=${toISODate(prevDate)}&view=day${unitQs}`} className="rounded-md border p-1.5 hover:bg-accent">
             <ChevronLeft className="h-4 w-4" />
           </Link>
           <span className="min-w-56 text-center font-medium capitalize">{dateLabel}</span>
-          <Link href={`/agenda?date=${toISODate(nextDate)}&view=day`} className="rounded-md border p-1.5 hover:bg-accent">
+          <Link href={`/agenda?date=${toISODate(nextDate)}&view=day${unitQs}`} className="rounded-md border p-1.5 hover:bg-accent">
             <ChevronRight className="h-4 w-4" />
           </Link>
         </div>
         {!isToday && (
-          <Link href="/agenda?view=day" className="text-xs text-primary underline underline-offset-2">
+          <Link href={`/agenda?view=day${unitQs}`} className="text-xs text-primary underline underline-offset-2">
             Ir para hoje
           </Link>
         )}
@@ -150,9 +175,11 @@ async function DayView({
 async function MonthView({
   ctx,
   date,
+  unitId,
 }: {
   ctx: Awaited<ReturnType<typeof getAuthContext>>;
   date: Date;
+  unitId: string | undefined;
 }) {
   if (!ctx) return null;
   const year = date.getFullYear();
@@ -160,12 +187,13 @@ async function MonthView({
   const monthStart = new Date(year, month, 1);
   const monthEnd = new Date(year, month + 1, 0);
 
-  const summary = await getAgendaMonthSummary({ ctx, monthStart, monthEnd });
+  const summary = await getAgendaMonthSummary({ ctx, monthStart, monthEnd, unitId });
 
   const prevMonth = new Date(year, month - 1, 1);
   const nextMonth = new Date(year, month + 1, 1);
   const today = new Date();
   const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
+  const unitQs = unitId ? `&unit=${unitId}` : "";
 
   const monthLabel = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(monthStart);
 
@@ -173,22 +201,22 @@ async function MonthView({
     <>
       <div className="flex flex-col items-center gap-1">
         <div className="flex items-center gap-4">
-          <Link href={`/agenda?date=${toISODate(prevMonth)}&view=month`} className="rounded-md border p-1.5 hover:bg-accent">
+          <Link href={`/agenda?date=${toISODate(prevMonth)}&view=month${unitQs}`} className="rounded-md border p-1.5 hover:bg-accent">
             <ChevronLeft className="h-4 w-4" />
           </Link>
           <span className="min-w-56 text-center font-medium capitalize">{monthLabel}</span>
-          <Link href={`/agenda?date=${toISODate(nextMonth)}&view=month`} className="rounded-md border p-1.5 hover:bg-accent">
+          <Link href={`/agenda?date=${toISODate(nextMonth)}&view=month${unitQs}`} className="rounded-md border p-1.5 hover:bg-accent">
             <ChevronRight className="h-4 w-4" />
           </Link>
         </div>
         {!isCurrentMonth && (
-          <Link href="/agenda?view=month" className="text-xs text-primary underline underline-offset-2">
+          <Link href={`/agenda?view=month${unitQs}`} className="text-xs text-primary underline underline-offset-2">
             Ir para este mês
           </Link>
         )}
       </div>
 
-      <MonthGrid year={year} month={month} summary={summary} />
+      <MonthGrid year={year} month={month} summary={summary} unitId={unitId} />
     </>
   );
 }
