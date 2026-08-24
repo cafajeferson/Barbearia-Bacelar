@@ -17,8 +17,10 @@ export function Step1Service({
   onToggle: (id: string) => void;
   onContinue: () => void;
 }) {
+  const hasSelection = selectedIds.length > 0;
+
   return (
-    <div className="space-y-4 p-4">
+    <div className={`space-y-4 p-4 ${hasSelection ? "pb-24" : ""}`}>
       <h1 className="text-lg font-semibold">Escolha o serviço</h1>
       <div className="space-y-2">
         {services.map((s) => (
@@ -52,9 +54,20 @@ export function Step1Service({
           </button>
         ))}
       </div>
-      <Button className="w-full" disabled={selectedIds.length === 0} onClick={onContinue}>
-        Continuar
-      </Button>
+
+      {/* Fixa acima da barra de navegação inferior (~4rem + safe-area) assim
+          que o cliente escolhe algo — antes disso ele tinha que rolar até o
+          fim da lista pra achar o botão, que nem sempre cabia na tela. */}
+      {hasSelection && (
+        <div
+          className="fixed inset-x-0 z-20 mx-auto max-w-3xl border-t bg-background/95 p-4 backdrop-blur"
+          style={{ bottom: "calc(4rem + env(safe-area-inset-bottom))" }}
+        >
+          <Button className="w-full" onClick={onContinue}>
+            Continuar
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
