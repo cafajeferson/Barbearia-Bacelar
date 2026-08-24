@@ -1,15 +1,28 @@
+import { getAuthContext } from "@/server/auth/getAuthContext";
+import { getSystemSettings } from "@/features/settings/service";
+import { SystemSettingsForm } from "@/features/settings/components/system-settings-form";
 import { JobTriggerPanel } from "@/features/automations/components/job-trigger-panel";
 
-export default function ConfiguracoesPage() {
+export default async function ConfiguracoesPage() {
+  const ctx = await getAuthContext();
+  if (!ctx) return null;
+
+  const settings = await getSystemSettings({ ctx });
+
   return (
-    <main className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Configurações</h1>
-        <p className="text-muted-foreground">
-          Unidades, Regras do Sistema, Identidade Visual, WhatsApp e Permissões chegam em uma
-          próxima fase — por enquanto, Automações.
-        </p>
-      </div>
+    <main className="space-y-8 p-6">
+      <SystemSettingsForm
+        initial={{
+          noShowThreshold: settings.noShowThreshold,
+          noShowAction: settings.noShowAction,
+          bookingMinLeadMinutes: settings.bookingMinLeadMinutes,
+          bookingMaxLeadDays: settings.bookingMaxLeadDays,
+          defaultCommissionServicePct: Number(settings.defaultCommissionServicePct),
+          defaultCommissionWalkInPct: Number(settings.defaultCommissionWalkInPct),
+          defaultCommissionProductPct: Number(settings.defaultCommissionProductPct),
+          subscriptionGraceDays: settings.subscriptionGraceDays,
+        }}
+      />
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Automações</h2>
