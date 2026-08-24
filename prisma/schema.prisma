@@ -260,6 +260,11 @@ model Service {
   featured        Boolean  @default(false)
   order           Int      @default(0)
   active          Boolean  @default(true)
+  // Sobrescreve o % padrão do profissional/sistema pra ESTE serviço — ver
+  // "Configurar Comissões". Null = cai pro override do profissional, senão
+  // pro default do SystemSettings.
+  commissionServicePct Decimal? @db.Decimal(5, 2)
+  commissionWalkInPct  Decimal? @db.Decimal(5, 2)
 
   appointmentServices AppointmentService[]
   planServices        PlanService[]

@@ -29,14 +29,28 @@ export async function recalculateCommissions(params: { ctx: AuthenticatedContext
     // --- Comissão de serviços: uma linha por atendimento concluído ---
     const appointments = await tx.appointment.findMany({
       where: { status: "COMPLETED", scheduledDate: { gte: start, lt: end } },
-      include: { professional: true },
+      include: { professional: true, services: { include: { service: true } } },
     });
     for (const a of appointments) {
-      const pctDecimal =
-        a.source === "WALK_IN"
-          ? (a.professional.commissionWalkInPct ?? settings.defaultCommissionWalkInPct)
-          : (a.professional.commissionServicePct ?? settings.defaultCommissionServicePct);
-      const pct = Number(pctDecimal);
+      const isWalkIn = a.source === "WALK_IN";
+      const professionalPct = isWalkIn ? a.professional.commissionWalkInPct : a.professional.commissionServicePct;
+      const defaultPct = isWalkIn ? settings.defaultCommissionWalkInPct : settings.defaultCommissionServicePct;
+      const fallbackPct = Number(professionalPct ?? defaultPct);
+
+      // Serviço pode sobrescrever o % — se o agendamento tem mais de um
+      // serviço com % diferentes entre si, pondera pelo preço de cada um
+      // (agendamento normal com 1 serviço, o caso de longe mais comum,
+      // isso vira só o % daquele serviço).
+      let weightedPct = 0;
+      let totalWeight = 0;
+      for (const as of a.services) {
+        const svcPct = isWalkIn ? as.service.commissionWalkInPct : as.service.commissionServicePct;
+        const effectivePct = Number(svcPct ?? fallbackPct);
+        const weight = Number(as.priceAtBooking);
+        weightedPct += effectivePct * weight;
+        totalWeight += weight;
+      }
+      const pct = totalWeight > 0 ? weightedPct / totalWeight : fallbackPct;
       const base = Number(a.totalPrice);
       const amount = (base * pct) / 100;
       await tx.commissionEntry.create({
@@ -157,6 +171,43 @@ export async function markCommissionsPaid(params: {
     tx.commissionEntry.updateMany({
       where: { professionalId: params.professionalId, periodMonth: start, type: { in: types }, status: "PENDING" },
       data: { status: "PAID", paidAt: new Date() },
+    }),
+  );
+}
+
+/** "Configurar Comissões" — todo serviço ativo, agrupado por seção, com o % (se sobrescrito) e o default do sistema como fallback pra exibição. */
+export async function listServicesForCommissionConfig(params: { ctx: AuthenticatedContext }) {
+  return withAppContext(params.ctx, async (tx) => {
+    const [sections, settings] = await Promise.all([
+      tx.serviceSection.findMany({
+        where: { services: { some: { active: true } } },
+        include: { services: { where: { active: true }, orderBy: { name: "asc" } } },
+        orderBy: { order: "asc" },
+      }),
+      tx.systemSettings.findUniqueOrThrow({ where: { id: 1 } }),
+    ]);
+    return {
+      sections,
+      defaultCommissionServicePct: Number(settings.defaultCommissionServicePct),
+      defaultCommissionWalkInPct: Number(settings.defaultCommissionWalkInPct),
+    };
+  });
+}
+
+export async function updateServiceCommission(params: {
+  ctx: AuthenticatedContext;
+  serviceId: string;
+  commissionServicePct: number | null;
+  commissionWalkInPct: number | null;
+}) {
+  requireAdmin(params.ctx);
+  return withAppContext(params.ctx, (tx) =>
+    tx.service.update({
+      where: { id: params.serviceId },
+      data: {
+        commissionServicePct: params.commissionServicePct,
+        commissionWalkInPct: params.commissionWalkInPct,
+      },
     }),
   );
 }

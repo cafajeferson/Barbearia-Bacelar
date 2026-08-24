@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Settings } from "lucide-react";
 import { getAuthContext } from "@/server/auth/getAuthContext";
 import { listServiceCommissions, listSubscriptionCommissions } from "@/features/commissions/service";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RecalculateButton } from "@/features/commissions/components/recalculate-button";
 import { ProfessionalCommissionRow } from "@/features/commissions/components/professional-commission-row";
@@ -56,7 +57,14 @@ export default async function ComissoesPage({
           <h1 className="text-2xl font-semibold">Comissões</h1>
           <p className="text-muted-foreground">Apuração no 1º do mês seguinte</p>
         </div>
-        <RecalculateButton periodMonth={periodMonthISO} />
+        <div className="flex gap-2">
+          <Button asChild variant="outline">
+            <Link href="/comissoes/configurar">
+              <Settings className="mr-1 h-4 w-4" /> Configurar
+            </Link>
+          </Button>
+          <RecalculateButton periodMonth={periodMonthISO} />
+        </div>
       </div>
 
       <div className="flex items-center justify-center gap-4">

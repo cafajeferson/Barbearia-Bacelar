@@ -17,6 +17,22 @@ export async function recalculateCommissionsAction(input: { periodMonth: string 
   return result;
 }
 
+export async function listServicesForCommissionConfigAction() {
+  const ctx = await requireAuth();
+  return service.listServicesForCommissionConfig({ ctx });
+}
+
+export async function updateServiceCommissionAction(input: {
+  serviceId: string;
+  commissionServicePct: number | null;
+  commissionWalkInPct: number | null;
+}) {
+  const ctx = await requireAuth();
+  const result = await service.updateServiceCommission({ ctx, ...input });
+  revalidatePath("/comissoes/configurar");
+  return result;
+}
+
 export async function markCommissionsPaidAction(input: {
   professionalId: string;
   periodMonth: string;
