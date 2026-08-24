@@ -448,17 +448,9 @@ export function CalendarBoard({
                     }}
                     title={`${a.client.name} — ${a.services.map((s) => s.service.name).join(" + ")}`}
                   >
-                    {/* Emoji de coroa/cupom ficam FORA do overflow-hidden de propósito —
-                        precisam se destacar saindo um pouco do quadrado do agendamento,
-                        não ficar espremidos dentro do card minúsculo. */}
-                    {isSubscriber && (
-                      <span
-                        className="pointer-events-none absolute -right-1.5 -top-2.5 z-20 select-none text-sm leading-none drop-shadow"
-                        title="Cliente assinante"
-                      >
-                        👑
-                      </span>
-                    )}
+                    {/* Cupom fica FORA do overflow-hidden de propósito — precisa se
+                        destacar saindo um pouco do quadrado. Coroa (inline, antes do
+                        nome) e cifrão (canto inferior) ficam dentro, sem sair do card. */}
                     {redemption && (
                       <span
                         className="pointer-events-none absolute -left-1.5 -top-2.5 z-20 flex select-none items-center gap-0.5 whitespace-nowrap rounded-full bg-background px-1 text-[10px] font-bold leading-none shadow drop-shadow"
@@ -473,7 +465,7 @@ export function CalendarBoard({
                     )}
                     {hasProducts && (
                       <span
-                        className="pointer-events-none absolute -bottom-1.5 -right-1.5 z-20 select-none text-sm leading-none drop-shadow"
+                        className="pointer-events-none absolute bottom-0.5 right-1 z-20 select-none text-sm leading-none drop-shadow"
                         title={`Cliente pediu: ${a.products.map((p) => `${p.quantity}× ${p.product.name}`).join(", ")}`}
                       >
                         💲
@@ -481,6 +473,11 @@ export function CalendarBoard({
                     )}
                     <div className={`h-full w-full overflow-hidden ${redemption ? "pt-1.5" : ""}`}>
                       <p className={`flex min-w-0 items-center gap-1 font-medium ${inProgress ? "uppercase" : ""}`}>
+                        {isSubscriber && (
+                          <span className="shrink-0 leading-none" title="Cliente assinante">
+                            👑
+                          </span>
+                        )}
                         <span className="min-w-0 truncate">{a.client.name}</span>
                         {a.forceOverlap && <span className="shrink-0">⚠</span>}
                       </p>
