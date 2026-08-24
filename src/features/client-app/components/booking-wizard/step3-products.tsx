@@ -21,7 +21,7 @@ export function Step3Products({
   onBack: () => void;
 }) {
   return (
-    <div className="space-y-4 p-4">
+    <div className="space-y-4 p-4 pb-24">
       <h1 className="text-lg font-semibold">Vai precisar de algum produto?</h1>
       <p className="text-sm text-muted-foreground">
         Precisando de algum produto, deixaremos separado para você retirar no dia do atendimento.
@@ -88,7 +88,13 @@ export function Step3Products({
         </div>
       )}
 
-      <div className="flex gap-2">
+      {/* Fixo acima da barra de navegação — produto é opcional, então
+          Continuar já pode ser clicado a qualquer momento, sem precisar
+          rolar até o fim da lista pra achá-lo. */}
+      <div
+        className="fixed inset-x-0 z-20 mx-auto flex max-w-3xl gap-2 border-t bg-background/95 p-4 backdrop-blur"
+        style={{ bottom: "calc(4rem + env(safe-area-inset-bottom))" }}
+      >
         <Button variant="outline" className="flex-1" onClick={onBack}>
           Voltar
         </Button>

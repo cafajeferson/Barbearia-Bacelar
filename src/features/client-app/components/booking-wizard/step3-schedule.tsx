@@ -128,8 +128,10 @@ export function Step3Schedule({
   // Não deixa voltar antes do mês atual — não tem sentido escolher um dia no passado.
   const canGoPrev = new Date(viewYear, viewMonth, 1) > new Date(today.getFullYear(), today.getMonth(), 1);
 
+  const canContinue = !!selectedDate && !!selectedTime;
+
   return (
-    <div className="space-y-4 p-4">
+    <div className={`space-y-4 p-4 ${canContinue ? "pb-24" : ""}`}>
       <h1 className="text-lg font-semibold">Escolha o horário</h1>
 
       <div className="rounded-lg border p-3">
@@ -235,14 +237,23 @@ export function Step3Schedule({
         </div>
       )}
 
-      <div className="flex gap-2">
-        <Button variant="outline" className="flex-1" onClick={onBack}>
-          Voltar
-        </Button>
-        <Button className="flex-1" disabled={!selectedDate || !selectedTime} onClick={onContinue}>
-          Continuar
-        </Button>
-      </div>
+      <Button variant="outline" className="w-full" onClick={onBack}>
+        Voltar
+      </Button>
+
+      {/* Fixo acima da barra de navegação, igual ao passo de serviço — só
+          aparece quando dá pra continuar de verdade (dia E horário escolhidos),
+          pra não ficar escondido lá embaixo depois que o cliente já escolheu. */}
+      {canContinue && (
+        <div
+          className="fixed inset-x-0 z-20 mx-auto max-w-3xl border-t bg-background/95 p-4 backdrop-blur"
+          style={{ bottom: "calc(4rem + env(safe-area-inset-bottom))" }}
+        >
+          <Button className="w-full" onClick={onContinue}>
+            Continuar
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
