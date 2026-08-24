@@ -1,15 +1,28 @@
 "use client";
 
+import { useMemo } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { CalendarDays, MapPin } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 
-const PERIOD_LABEL: Record<string, string> = {
-  all: "Todos os meses",
-  prev: "Mês passado",
-  current: "Mês atual",
-  next: "Próximo mês",
-};
+const MONTH_ABBR = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+
+/** "YYYY-MM" -> "nov 2026", igual ao formato do outro app. */
+function monthLabel(value: string) {
+  const [year, month] = value.split("-").map(Number);
+  return `${MONTH_ABBR[month - 1]} ${year}`;
+}
+
+/** Próximos 3 meses + os últimos 8, mais recente primeiro — mesma janela do outro app. */
+function buildMonthOptions() {
+  const today = new Date();
+  const options: string[] = [];
+  for (let offset = 3; offset >= -8; offset--) {
+    const d = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+    options.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  return options;
+}
 
 export function AdminTopbar({ units }: { units: { id: string; name: string; address: string }[] }) {
   const router = useRouter();
@@ -18,6 +31,7 @@ export function AdminTopbar({ units }: { units: { id: string; name: string; addr
 
   const period = searchParams.get("period") ?? "all";
   const unit = searchParams.get("unit") ?? "all";
+  const monthOptions = useMemo(buildMonthOptions, []);
 
   function updateParam(key: string, value: string, extraDeletes: string[] = []) {
     const params = new URLSearchParams(searchParams.toString());
@@ -35,13 +49,14 @@ export function AdminTopbar({ units }: { units: { id: string; name: string; addr
           <span className="flex items-center gap-1.5">
             <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
             <span className="text-muted-foreground">Período ·</span>
-            <span className="font-medium">{PERIOD_LABEL[period]}</span>
+            <span className="font-medium">{period === "all" ? "Todos os meses" : monthLabel(period)}</span>
           </span>
         </SelectTrigger>
-        <SelectContent>
-          {Object.entries(PERIOD_LABEL).map(([key, label]) => (
-            <SelectItem key={key} value={key}>
-              {label}
+        <SelectContent className="max-h-64">
+          <SelectItem value="all">Todos os meses</SelectItem>
+          {monthOptions.map((m) => (
+            <SelectItem key={m} value={m}>
+              {monthLabel(m)}
             </SelectItem>
           ))}
         </SelectContent>

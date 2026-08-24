@@ -20,15 +20,13 @@ function parseDateParam(value: string | undefined): Date {
   return d;
 }
 
-/** "Período" da barra global (topo do admin) — só a Agenda Mestre reage a ele por enquanto. */
+/** "Período" da barra global (topo do admin) — só a Agenda Mestre reage a ele por enquanto. Formato "YYYY-MM". */
 function resolveFromPeriod(period: string | undefined): { date: Date; view: "day" | "month" } | null {
   if (!period || period === "all") return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  if (period === "current") return { date: new Date(today.getFullYear(), today.getMonth(), 1), view: "month" };
-  if (period === "prev") return { date: new Date(today.getFullYear(), today.getMonth() - 1, 1), view: "month" };
-  if (period === "next") return { date: new Date(today.getFullYear(), today.getMonth() + 1, 1), view: "month" };
-  return null;
+  const match = /^(\d{4})-(\d{2})$/.exec(period);
+  if (!match) return null;
+  const [, year, month] = match;
+  return { date: new Date(Number(year), Number(month) - 1, 1), view: "month" };
 }
 
 export default async function AgendaMestrePage({
