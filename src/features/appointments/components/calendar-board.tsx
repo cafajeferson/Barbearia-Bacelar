@@ -3,7 +3,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Crown, Ticket } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -438,7 +437,7 @@ export function CalendarBoard({
                     key={a.id}
                     onPointerDown={(e) => startMove(e, a)}
                     onClick={(e) => e.stopPropagation()}
-                    className={`group absolute left-0.5 right-0.5 z-10 cursor-grab touch-none overflow-hidden rounded-md border p-1 text-[11px] leading-tight active:cursor-grabbing ${inProgress ? "ring-2 ring-offset-1 ring-offset-background" : ""} ${isMoving ? "opacity-70 shadow-lg" : ""}`}
+                    className={`group absolute left-0.5 right-0.5 z-10 cursor-grab touch-none rounded-md border p-1 text-[11px] leading-tight active:cursor-grabbing ${inProgress ? "ring-2 ring-offset-1 ring-offset-background" : ""} ${isMoving ? "opacity-70 shadow-lg" : ""}`}
                     style={{
                       top,
                       height: cardHeight,
@@ -448,36 +447,43 @@ export function CalendarBoard({
                     }}
                     title={`${a.client.name} — ${a.services.map((s) => s.service.name).join(" + ")}`}
                   >
+                    {/* Emoji de coroa/cupom ficam FORA do overflow-hidden de propósito —
+                        precisam se destacar saindo um pouco do quadrado do agendamento,
+                        não ficar espremidos dentro do card minúsculo. */}
                     {isSubscriber && (
-                      <Crown
-                        className="absolute right-1 top-0.5 h-3 w-3 shrink-0 fill-current"
-                        style={{ color: prof.color }}
-                      />
+                      <span
+                        className="pointer-events-none absolute -right-1.5 -top-2.5 z-20 select-none text-sm leading-none drop-shadow"
+                        title="Cliente assinante"
+                      >
+                        👑
+                      </span>
                     )}
                     {redemption && (
                       <span
-                        className="absolute left-1 top-0.5 flex items-center gap-0.5 text-[9px] font-semibold"
+                        className="pointer-events-none absolute -left-1.5 -top-2.5 z-20 flex select-none items-center gap-0.5 whitespace-nowrap rounded-full bg-background px-1 text-[10px] font-bold leading-none shadow drop-shadow"
                         style={{ color: prof.color }}
                         title={`Cupom ${redemption.coupon.code}`}
                       >
-                        <Ticket className="h-2.5 w-2.5 shrink-0" />
+                        <span className="text-sm">🎟️</span>
                         {redemption.coupon.discountType === "PERCENT"
                           ? `${redemption.coupon.discountValue}%`
                           : formatBRL(redemption.coupon.discountValue)}
                       </span>
                     )}
-                    <p className={`flex min-w-0 items-center gap-1 font-medium ${inProgress ? "uppercase" : ""} ${redemption ? "pl-7" : ""}`}>
-                      <span className="min-w-0 truncate">{a.client.name}</span>
-                      {a.forceOverlap && <span className="shrink-0">⚠</span>}
-                    </p>
-                    <p className="truncate text-muted-foreground">
-                      {a.services.map((s) => s.service.name).join(" + ")}
-                    </p>
-                    {cardHeight >= 44 && (
-                      <p className="text-muted-foreground">
-                        {a.startTime}–{minutesToTime(timeToMinutes(a.startTime) + durationMinutes)}
+                    <div className="h-full w-full overflow-hidden">
+                      <p className={`flex min-w-0 items-center gap-1 font-medium ${inProgress ? "uppercase" : ""}`}>
+                        <span className="min-w-0 truncate">{a.client.name}</span>
+                        {a.forceOverlap && <span className="shrink-0">⚠</span>}
                       </p>
-                    )}
+                      <p className="truncate text-muted-foreground">
+                        {a.services.map((s) => s.service.name).join(" + ")}
+                      </p>
+                      {cardHeight >= 44 && (
+                        <p className="text-muted-foreground">
+                          {a.startTime}–{minutesToTime(timeToMinutes(a.startTime) + durationMinutes)}
+                        </p>
+                      )}
+                    </div>
                     {/* Alça de redimensionar — só na borda inferior, estilo Booksy. Sempre
                         visível (não só no hover): em toque não existe hover, e a alça
                         escondida ficava impossível de pegar com o dedo. */}
