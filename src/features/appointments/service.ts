@@ -1,6 +1,7 @@
 import type {
   AppointmentSource,
 } from "@/generated/prisma/enums";
+import type { ProfessionalModel } from "@/generated/prisma/models/Professional";
 import type { AuthenticatedContext } from "@/server/auth/getAuthContext";
 import { withAppContext } from "@/server/db/context";
 import { addMinutesToTime, combineDateAndTime } from "@/shared/lib/time";
@@ -269,12 +270,20 @@ export async function cancelAppointment(params: {
 }
 
 /** Dados da Agenda Mestre: profissionais + agendamentos + bloqueios do dia. */
-export async function getAgendaMestreData(params: { ctx: AuthenticatedContext; date: Date; unitId?: string }) {
+export async function getAgendaMestreData(params: {
+  ctx: AuthenticatedContext;
+  date: Date;
+  unitId?: string;
+  /** Já buscada pela página (mesma transação da unidade) — evita abrir mais uma transação só pra isso. */
+  professionals?: ProfessionalModel[];
+}) {
   return withAppContext(params.ctx, async (tx) => {
-    const professionals = await tx.professional.findMany({
-      where: { active: true, units: params.unitId ? { some: { unitId: params.unitId } } : undefined },
-      orderBy: { name: "asc" },
-    });
+    const professionals =
+      params.professionals ??
+      (await tx.professional.findMany({
+        where: { active: true, units: params.unitId ? { some: { unitId: params.unitId } } : undefined },
+        orderBy: { name: "asc" },
+      }));
     const appointmentsList = await tx.appointment.findMany({
       where: { scheduledDate: params.date, status: { not: "CANCELLED" }, unitId: params.unitId },
       include: {

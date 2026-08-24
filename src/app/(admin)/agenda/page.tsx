@@ -51,16 +51,19 @@ export default async function AgendaMestrePage({
   const date = fromPeriod?.date ?? parseDateParam(dateParam);
   const dateISO = toISODate(date);
 
-  const [unit, professionals] = await Promise.all([
-    withAppContext(ctx, (tx) => tx.unit.findFirstOrThrow()),
-    withAppContext(ctx, (tx) =>
+  // Uma única transação pras duas consultas — abrir uma pra cada esgotou o
+  // pool de conexões do pooler algumas vezes (P2028 "Unable to start a
+  // transaction"), especialmente combinado com o que o layout já abre.
+  const { unit, professionals } = await withAppContext(ctx, async (tx) => {
+    const [unit, professionals] = await Promise.all([
+      tx.unit.findFirstOrThrow(),
       tx.professional.findMany({
         where: { active: true, units: unitId ? { some: { unitId } } : undefined },
-        select: { id: true, name: true, color: true },
         orderBy: { name: "asc" },
       }),
-    ),
-  ]);
+    ]);
+    return { unit, professionals };
+  });
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -101,7 +104,15 @@ export default async function AgendaMestrePage({
       </div>
 
       {view === "day" ? (
-        <DayView ctx={ctx} date={date} dateISO={dateISO} isToday={isToday} unitId={unit.id} unitFilter={unitId} />
+        <DayView
+          ctx={ctx}
+          date={date}
+          dateISO={dateISO}
+          isToday={isToday}
+          unitId={unit.id}
+          unitFilter={unitId}
+          professionals={professionals}
+        />
       ) : (
         <MonthView ctx={ctx} date={date} unitId={unitId} />
       )}
@@ -116,6 +127,7 @@ async function DayView({
   isToday,
   unitId,
   unitFilter,
+  professionals,
 }: {
   ctx: Awaited<ReturnType<typeof getAuthContext>>;
   date: Date;
@@ -123,6 +135,7 @@ async function DayView({
   isToday: boolean;
   unitId: string;
   unitFilter: string | undefined;
+  professionals: Parameters<typeof getAgendaMestreData>[0]["professionals"];
 }) {
   if (!ctx) return null;
   const prevDate = new Date(date);
@@ -131,7 +144,7 @@ async function DayView({
   nextDate.setDate(nextDate.getDate() + 1);
   const unitQs = unitFilter ? `&unit=${unitFilter}` : "";
 
-  const rawData = await getAgendaMestreData({ ctx, date, unitId: unitFilter });
+  const rawData = await getAgendaMestreData({ ctx, date, unitId: unitFilter, professionals });
   // totalPrice/priceAtBooking (Decimal) não atravessam a fronteira Server -> Client Component.
   const data = {
     ...rawData,

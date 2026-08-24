@@ -9,12 +9,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (!ctx || ctx.role !== "ADMIN") {
     redirect("/login");
   }
-  const [name, units] = await Promise.all([
-    getCurrentUserName(),
-    withAppContext(ctx, (tx) =>
-      tx.unit.findMany({ where: { active: true }, select: { id: true, name: true, address: true } }),
-    ),
-  ]);
+  // Sequencial, não Promise.all: getCurrentUserName() reaproveita a mesma
+  // transação já cacheada do getAuthContext() acima (mesmo request) — rodar
+  // em paralelo com a consulta de units só arriscaria abrir conexão nova à
+  // toa, sem ganhar tempo real (visto o pooler do Supabase já ter recusado
+  // transação por excesso de conexões simultâneas nessa página).
+  const name = await getCurrentUserName();
+  const units = await withAppContext(ctx, (tx) =>
+    tx.unit.findMany({ where: { active: true }, select: { id: true, name: true, address: true } }),
+  );
 
   return (
     <div className="flex min-h-screen">
