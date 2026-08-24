@@ -432,6 +432,7 @@ export function CalendarBoard({
                 const inProgress = a.status === "IN_PROGRESS";
                 const isSubscriber = a.client.subscriptions.length > 0;
                 const redemption = a.couponRedemptions[0];
+                const hasProducts = a.products.length > 0;
                 return (
                   <div
                     key={a.id}
@@ -468,6 +469,14 @@ export function CalendarBoard({
                         {redemption.coupon.discountType === "PERCENT"
                           ? `${redemption.coupon.discountValue}%`
                           : formatBRL(redemption.coupon.discountValue)}
+                      </span>
+                    )}
+                    {hasProducts && (
+                      <span
+                        className="pointer-events-none absolute -bottom-1.5 -right-1.5 z-20 select-none text-sm leading-none drop-shadow"
+                        title={`Cliente pediu: ${a.products.map((p) => `${p.quantity}× ${p.product.name}`).join(", ")}`}
+                      >
+                        💲
                       </span>
                     )}
                     <div className={`h-full w-full overflow-hidden ${redemption ? "pt-1.5" : ""}`}>
