@@ -72,16 +72,25 @@ function LoginForm() {
     setError(null);
     setIsGoogleLoading(true);
     const supabase = createSupabaseBrowserClient();
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+    // skipBrowserRedirect + navegação manual (em vez de deixar o SDK
+    // redirecionar na hora): o SDK grava o cookie do code_verifier (PKCE)
+    // via document.cookie logo antes de navegar — em alguns navegadores
+    // mobile essa escrita não terminava de persistir a tempo do redirect
+    // pro Google, e a volta falhava silenciosamente (usuário caía de volta
+    // no login e só no 2º clique funcionava, com o cookie já persistido).
+    // O timeout mínimo dá tempo da escrita assentar antes de sair da página.
+    const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      options: { redirectTo: `${window.location.origin}/auth/callback`, skipBrowserRedirect: true },
     });
-    if (oauthError) {
+    if (oauthError || !data.url) {
       setError("Não foi possível iniciar o login com Google.");
       setIsGoogleLoading(false);
+      return;
     }
-    // Em caso de sucesso, o navegador já é redirecionado pro Google — não
-    // há mais nada a fazer aqui.
+    setTimeout(() => {
+      window.location.href = data.url;
+    }, 50);
   }
 
   return (

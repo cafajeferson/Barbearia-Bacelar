@@ -37,6 +37,10 @@ export async function GET(request: NextRequest) {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error || !data.user) {
+    // Loga o motivo real — sem isso, uma falha aqui (ex.: code_verifier
+    // ausente/expirado) só aparecia pro usuário como "voltou pro login",
+    // sem pista nenhuma pra investigar.
+    console.error("[auth/callback] exchangeCodeForSession falhou:", error?.message ?? "sem data.user");
     return NextResponse.redirect(`${origin}/login?error=oauth`);
   }
   const authUser = data.user;
