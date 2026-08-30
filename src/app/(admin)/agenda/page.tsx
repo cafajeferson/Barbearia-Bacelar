@@ -8,6 +8,7 @@ import { AgendaToolbar } from "@/features/appointments/components/agenda-toolbar
 import { NewAppointmentDialog } from "@/features/appointments/components/new-appointment-dialog";
 import { BlockTimeDialog } from "@/features/appointments/components/block-time-dialog";
 import { withAppContext } from "@/server/db/context";
+import { ttlCached } from "@/server/db/ttl-cache";
 import { cn } from "@/lib/utils";
 
 function toISODate(d: Date) {
@@ -49,19 +50,23 @@ export default async function AgendaMestrePage({
   const date = fromPeriod?.date ?? parseDateParam(dateParam);
   const dateISO = toISODate(date);
 
-  // Uma única transação pras duas consultas — abrir uma pra cada esgotou o
-  // pool de conexões do pooler algumas vezes (P2028 "Unable to start a
-  // transaction"), especialmente combinado com o que o layout já abre.
-  const { unit, professionals } = await withAppContext(ctx, async (tx) => {
-    const [unit, professionals] = await Promise.all([
-      tx.unit.findFirstOrThrow(),
-      tx.professional.findMany({
-        where: { active: true, units: unitId ? { some: { unitId } } : undefined },
-        orderBy: { name: "asc" },
-      }),
-    ]);
-    return { unit, professionals };
-  });
+  // Uma única transação pras duas consultas (abrir uma pra cada já esgotou
+  // o pool — P2028), E com 30s de cache em memória: unidade/equipe mudam
+  // raramente, mas essa é a tela mais visitada do admin — sem o cache,
+  // cada troca de dia pagava essa transação inteira de novo (~500ms) além
+  // da dos agendamentos em si.
+  const { unit, professionals } = await ttlCached(`agenda:unit-professionals:${unitId ?? "all"}`, 30_000, () =>
+    withAppContext(ctx, async (tx) => {
+      const [unit, professionals] = await Promise.all([
+        tx.unit.findFirstOrThrow(),
+        tx.professional.findMany({
+          where: { active: true, units: unitId ? { some: { unitId } } : undefined },
+          orderBy: { name: "asc" },
+        }),
+      ]);
+      return { unit, professionals };
+    }),
+  );
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
