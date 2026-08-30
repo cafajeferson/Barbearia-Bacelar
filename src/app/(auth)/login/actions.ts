@@ -10,14 +10,19 @@ const ROLE_HOME: Record<string, string> = {
   CLIENT: "/inicio",
 };
 
-export async function loginAction(formData: FormData): Promise<{ error: string } | void> {
+export async function loginAction(formData: FormData): Promise<void> {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
 
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
-    return { error: "E-mail ou senha inválidos." };
+    // Redireciona com ?error= (mesmo padrão do callback do Google) em vez
+    // de retornar {error} pro form ler via onSubmit: o <form> agora usa
+    // action={loginAction} direto (sem onSubmit/preventDefault), que
+    // funciona via POST nativo mesmo ANTES da página hidratar — não dá
+    // pra "ler o retorno" desse jeito, só redirect() é visível sem JS.
+    redirect("/login?error=credenciais");
   }
 
   // Redireciona direto pra home do papel em vez de pra "/" (que também

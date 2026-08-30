@@ -1,17 +1,18 @@
 "use client";
 
-import { Suspense, useEffect, useState, useTransition } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { createSupabaseBrowserClient } from "@/shared/lib/supabase-browser";
 import { loginAction } from "./actions";
 
-const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+const LOGIN_ERROR_MESSAGES: Record<string, string> = {
   oauth: "Não foi possível concluir o login com Google. Tente de novo.",
   "sem-email": "Sua conta Google precisa ter um e-mail associado.",
   conflito: "Este e-mail já está vinculado a outra conta. Fale com a administração.",
   inativo: "Sua conta está desativada. Fale com a administração.",
+  credenciais: "E-mail ou senha inválidos.",
 };
 
 function GoogleIcon() {
@@ -48,25 +49,14 @@ export function LoginPageClient() {
 function LoginForm() {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   useEffect(() => {
     const oauthError = searchParams.get("error");
     if (oauthError) {
-      setError(OAUTH_ERROR_MESSAGES[oauthError] ?? "Não foi possível fazer login.");
+      setError(LOGIN_ERROR_MESSAGES[oauthError] ?? "Não foi possível fazer login.");
     }
   }, [searchParams]);
-
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError(null);
-    const formData = new FormData(e.currentTarget);
-    startTransition(async () => {
-      const result = await loginAction(formData);
-      if (result?.error) setError(result.error);
-    });
-  }
 
   async function handleGoogleLogin() {
     setError(null);
@@ -131,7 +121,12 @@ function LoginForm() {
           <div className="h-px flex-1 bg-border" />
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-4">
+        {/* action={loginAction} direto (não onSubmit) — funciona via POST
+            nativo mesmo se a pessoa clicar antes do JS da página hidratar
+            (bundle do login é o mais pesado do app). Erro de credenciais
+            vira redirect pra /login?error=credenciais, lido pelo useEffect
+            acima — igual já era feito pros erros do OAuth do Google. */}
+        <form action={loginAction} className="space-y-5 sm:space-y-4">
           <div className="space-y-2">
             <label className="text-sm text-muted-foreground" htmlFor="email">
               E-mail
@@ -160,8 +155,8 @@ function LoginForm() {
             />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" className="h-14 w-full text-base sm:h-10 sm:text-sm" disabled={isPending}>
-            {isPending ? "Entrando..." : "Entrar"}
+          <Button type="submit" className="h-14 w-full text-base sm:h-10 sm:text-sm">
+            Entrar
           </Button>
         </form>
       </div>
