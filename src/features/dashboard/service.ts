@@ -23,22 +23,62 @@ export async function getDashboardData(params: {
   const yesterday = addDays(today, -1);
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
-  return withAppContext(ctx, async (tx) => {
-    const unitFilter = unitId ? { unitId } : {};
+  const unitFilter = unitId ? { unitId } : {};
+  const recentRangeStart = yesterday < monthStart ? yesterday : monthStart;
 
-    // Uma única conexão por transação — consultas na mesma `tx` rodam em
-    // SÉRIE, nunca com Promise.all (senão o driver `pg` intercala queries
-    // na mesma conexão, o que é indefinido/depreciado). Como cada query aqui
-    // paga uma viagem de ida-e-volta inteira até o Supabase (Brasil <->
-    // us-east-1, ~200-400ms cada), o número de queries importa tanto quanto
-    // o custo de cada uma — por isso hoje/ontem/mês, que eram 5 queries
-    // (2 counts + 3 findMany), viram 1 findMany só, com os 3 recortes
-    // calculados em memória a partir do mesmo resultado.
-    const recentRangeStart = yesterday < monthStart ? yesterday : monthStart;
-    const recentAppointments = await tx.appointment.findMany({
-      where: { ...unitFilter, scheduledDate: { gte: recentRangeStart }, status: { not: "CANCELLED" } },
-      select: { scheduledDate: true, status: true, totalPrice: true },
-    });
+  // Consultas na mesma `tx` rodam em SÉRIE (uma conexão), e cada uma paga
+  // uma viagem inteira até o Supabase (Brasil <-> us-east-1, ~140ms+ cada):
+  // 8 queries em série custavam ~1,5s só de rede, era a página mais lenta
+  // do app. Dividimos em 3 transações PARALELAS (pool tem 5 conexões, o
+  // layout já não briga mais — auth/units têm cache) — ~3 viagens de rede
+  // no caminho crítico em vez de ~10.
+  const [groupA, groupB, groupC] = await Promise.all([
+    withAppContext(ctx, async (tx) => {
+      const recentAppointments = await tx.appointment.findMany({
+        where: { ...unitFilter, scheduledDate: { gte: recentRangeStart }, status: { not: "CANCELLED" } },
+        select: { scheduledDate: true, status: true, totalPrice: true },
+      });
+      const upcoming = await tx.appointment.findMany({
+        where: { ...unitFilter, status: { in: ["SCHEDULED", "CONFIRMED"] }, scheduledDate: { gte: today } },
+        include: { client: true, professional: true, services: { include: { service: true } } },
+        orderBy: [{ scheduledDate: "asc" }, { startTime: "asc" }],
+        take: 5,
+      });
+      const recentActivity = await tx.activityLog.findMany({ orderBy: { createdAt: "desc" }, take: 8 });
+      return { recentAppointments, upcoming, recentActivity };
+    }),
+    withAppContext(ctx, async (tx) => {
+      const periodAppointments = await tx.appointment.findMany({
+        where: { ...unitFilter, scheduledDate: periodStart ? { gte: periodStart } : undefined },
+        include: { services: { include: { service: true } }, professional: true },
+      });
+      const allOpenAppointments = await tx.appointment.findMany({
+        where: { ...unitFilter, status: { in: ["SCHEDULED", "CONFIRMED", "IN_PROGRESS"] } },
+        include: { client: true, professional: true },
+        orderBy: [{ scheduledDate: "asc" }, { startTime: "asc" }],
+      });
+      return { periodAppointments, allOpenAppointments };
+    }),
+    withAppContext(ctx, async (tx) => {
+      // totalClients + newClientsInPeriod: mesma tabela, 1 SELECT com dois
+      // COUNT(*) FILTER em vez de duas queries.
+      const clientCounts = await tx.$queryRaw<{ total: bigint; new_in_period: bigint }[]>`
+        SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE "createdAt" >= ${periodStart ?? monthStart}) AS new_in_period
+        FROM "Client"
+      `;
+      const pendingCount = await tx.appointment.count({
+        where: { ...unitFilter, status: { in: ["SCHEDULED", "CONFIRMED"] } },
+      });
+      const activeProfessionals = await tx.professional.count({ where: { active: true } });
+      return { clientCounts, pendingCount, activeProfessionals };
+    }),
+  ]);
+
+  const { recentAppointments, upcoming, recentActivity } = groupA;
+  const { periodAppointments, allOpenAppointments } = groupB;
+  const { clientCounts, pendingCount, activeProfessionals } = groupC;
+
+  {
     const dayKey = (d: Date) => d.toISOString().slice(0, 10);
     const todayKey = dayKey(today);
     const yesterdayKey = dayKey(yesterday);
@@ -57,33 +97,8 @@ export async function getDashboardData(params: {
     const completedYesterday = yesterdayRows.filter((r) => r.status === "COMPLETED");
     const completedMonth = monthRows.filter((r) => r.status === "COMPLETED");
 
-    // totalClients + newClientsInPeriod: mesma tabela, 1 SELECT com dois
-    // COUNT(*) FILTER em vez de duas queries.
-    const clientCounts = await tx.$queryRaw<{ total: bigint; new_in_period: bigint }[]>`
-      SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE "createdAt" >= ${periodStart ?? monthStart}) AS new_in_period
-      FROM "Client"
-    `;
     const totalClients = Number(clientCounts[0]?.total ?? 0);
     const newClientsInPeriod = Number(clientCounts[0]?.new_in_period ?? 0);
-
-    const pendingCount = await tx.appointment.count({ where: { ...unitFilter, status: { in: ["SCHEDULED", "CONFIRMED"] } } });
-    const periodAppointments = await tx.appointment.findMany({
-      where: { ...unitFilter, scheduledDate: periodStart ? { gte: periodStart } : undefined },
-      include: { services: { include: { service: true } }, professional: true },
-    });
-    const activeProfessionals = await tx.professional.count({ where: { active: true } });
-    const upcoming = await tx.appointment.findMany({
-      where: { ...unitFilter, status: { in: ["SCHEDULED", "CONFIRMED"] }, scheduledDate: { gte: today } },
-      include: { client: true, professional: true, services: { include: { service: true } } },
-      orderBy: [{ scheduledDate: "asc" }, { startTime: "asc" }],
-      take: 5,
-    });
-    const recentActivity = await tx.activityLog.findMany({ orderBy: { createdAt: "desc" }, take: 8 });
-    const allOpenAppointments = await tx.appointment.findMany({
-      where: { ...unitFilter, status: { in: ["SCHEDULED", "CONFIRMED", "IN_PROGRESS"] } },
-      include: { client: true, professional: true },
-      orderBy: [{ scheduledDate: "asc" }, { startTime: "asc" }],
-    });
 
     const sumPrice = (rows: { totalPrice: unknown }[]) =>
       rows.reduce((sum, r) => sum + Number(r.totalPrice), 0);
@@ -166,5 +181,5 @@ export async function getDashboardData(params: {
         oldest: openAppointments[0] ?? null,
       },
     };
-  });
+  }
 }
