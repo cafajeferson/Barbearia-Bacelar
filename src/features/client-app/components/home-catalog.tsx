@@ -51,6 +51,11 @@ export function HomeCatalog({ sections, recentServices }: { sections: Sections; 
               <Link
                 key={s.id}
                 href={`/agendar?serviceId=${s.id}`}
+                // Cada card aqui é um link pro wizard de agendamento inteiro
+                // (busca serviços+profissionais+produtos+assinaturas) — com
+                // prefetch automático, a HOME sozinha já disparava dezenas
+                // dessas renderizações completas em segundo plano.
+                prefetch={false}
                 className="flex w-40 shrink-0 items-center gap-2 rounded-lg border bg-card p-2"
               >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-secondary text-xs">
@@ -140,7 +145,9 @@ function ServiceCard({ service }: { service: Sections[number]["services"][number
             {formatBRL(Number(service.price))} · {service.durationMinutes}min
           </span>
           <Button size="sm" asChild>
-            <Link href={`/agendar?serviceId=${service.id}`}>Agendar</Link>
+            <Link href={`/agendar?serviceId=${service.id}`} prefetch={false}>
+              Agendar
+            </Link>
           </Button>
         </div>
       </div>

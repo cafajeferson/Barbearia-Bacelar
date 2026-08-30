@@ -65,6 +65,11 @@ export function ClientBottomNav() {
             <Link
               key={link.href}
               href={link.href}
+              // Mesmo motivo do menu do admin: as 4 abas são páginas
+              // dinâmicas (auth-gated) — prefetch automático das 4 toda
+              // vez que o cliente abre qualquer tela do app não vale o
+              // custo de consultas ao banco em segundo plano.
+              prefetch={false}
               className={cn(
                 "flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-xs font-medium",
                 active ? "text-primary" : "text-muted-foreground",

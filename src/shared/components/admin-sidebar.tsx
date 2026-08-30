@@ -70,6 +70,14 @@ function NavLink({
   return (
     <Link
       href={href}
+      // Todo item do menu é uma rota autenticada/dinâmica (consulta banco de
+      // verdade) — o prefetch automático do Next disparava as ~13 páginas
+      // TODA VEZ que qualquer tela do admin carregava, brigando pelo pool
+      // de conexão do banco com a página que a pessoa realmente queria ver
+      // e deixando o site inteiro lento. Navegação continua instantânea ao
+      // clicar (só perde o prefetch antecipado, que aqui custava mais do
+      // que valia).
+      prefetch={false}
       className={cn(
         "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
         active

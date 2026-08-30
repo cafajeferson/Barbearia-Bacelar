@@ -60,6 +60,11 @@ export function MonthGrid({
             <Link
               key={i}
               href={`/agenda?date=${iso}&view=day${unitQs}`}
+              // Até 42 células por mês — com prefetch automático (padrão do
+              // Next), isso disparava 42 renderizações completas da Agenda
+              // Mestre (cada uma abrindo transação no banco) só de a grade
+              // aparecer na tela. A pessoa clica em UM dia, não em 42.
+              prefetch={false}
               className={cn(
                 "flex min-h-24 flex-col gap-1 border-b border-r p-2 text-sm transition-colors hover:bg-accent",
                 (i + 1) % 7 === 0 && "border-r-0",
