@@ -1,16 +1,20 @@
 import { redirect } from "next/navigation";
 import { getAuthContext, getCurrentUserProfile } from "@/server/auth/getAuthContext";
 import { withAppContext } from "@/server/db/context";
+import { ttlCached } from "@/server/db/ttl-cache";
 import { ClientNav, ClientBottomNav } from "@/shared/components/client-nav";
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
   // As três são independentes entre si — rodar em paralelo corta o tempo
   // de rede desse layout, que roda em toda página do app do cliente. No
   // raro caso de sessão inválida, unit/profile acabam sendo buscados à
-  // toa (dado não sensível, sem problema).
+  // toa (dado não sensível, sem problema). A unidade fica 60s em cache
+  // de memória: muda raramente e custava uma transação por navegação.
   const [ctx, unit, profile] = await Promise.all([
     getAuthContext(),
-    withAppContext({ role: "ADMIN", userId: null }, (tx) => tx.unit.findFirst()),
+    ttlCached("client-layout:unit", 60_000, () =>
+      withAppContext({ role: "ADMIN", userId: null }, (tx) => tx.unit.findFirst()),
+    ),
     getCurrentUserProfile(),
   ]);
   if (!ctx || ctx.role !== "CLIENT") {

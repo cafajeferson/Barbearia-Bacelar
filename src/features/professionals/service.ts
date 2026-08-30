@@ -1,4 +1,4 @@
-import type { AuthenticatedContext } from "@/server/auth/getAuthContext";
+import { invalidateCurrentUserCache, type AuthenticatedContext } from "@/server/auth/getAuthContext";
 import { withAppContext } from "@/server/db/context";
 import { createSupabaseAdminClient } from "@/server/supabase/admin";
 
@@ -94,7 +94,7 @@ export async function deactivateProfessional(params: {
   professionalId: string;
 }) {
   requireAdmin(params.ctx);
-  return withAppContext(params.ctx, async (tx) => {
+  const professional = await withAppContext(params.ctx, async (tx) => {
     const professional = await tx.professional.update({
       where: { id: params.professionalId },
       data: { active: false },
@@ -105,6 +105,10 @@ export async function deactivateProfessional(params: {
     });
     return professional;
   });
+  // Sem isso, a sessão do profissional desativado continuaria válida por
+  // até 30s (TTL do cache de usuário em getAuthContext).
+  invalidateCurrentUserCache();
+  return professional;
 }
 
 export async function setWeeklyAvailability(params: {
