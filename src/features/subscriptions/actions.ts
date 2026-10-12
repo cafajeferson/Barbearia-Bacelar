@@ -80,6 +80,14 @@ export async function setClientSubscriptionStatusAction(input: {
   return sub;
 }
 
+export async function registerSubscriptionPaymentAction(input: { subscriptionId: string }) {
+  const ctx = await requireAuth();
+  const result = await service.registerSubscriptionPayment({ ctx, ...input });
+  revalidatePath("/assinaturas");
+  revalidatePath("/fechamento");
+  return { amount: result.amount, nextBillingDate: result.nextBillingDate?.toISOString().slice(0, 10) ?? null };
+}
+
 export async function addManualCreditUsageAction(input: { subscriptionId: string }) {
   const ctx = await requireAuth();
   const sub = await service.addManualCreditUsage({ ctx, ...input });

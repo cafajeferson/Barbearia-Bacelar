@@ -38,6 +38,8 @@ export default async function AssinaturasPage({
     getSubscriptionSummary({ ctx }),
   ]);
 
+  const todayKey = new Date().toISOString().slice(0, 10);
+
   return (
     <main className="space-y-4 p-3 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -92,9 +94,10 @@ export default async function AssinaturasPage({
             <TableRow>
               <TableHead>Cliente</TableHead>
               <TableHead>Plano</TableHead>
+              <TableHead>Vence em</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Usos</TableHead>
-              <TableHead className="w-40" />
+              <TableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -115,8 +118,20 @@ export default async function AssinaturasPage({
                   <p className="font-medium">{s.plan.name}</p>
                   <p className="text-xs text-muted-foreground">
                     {formatBRL(Number(s.plan.priceMonthly))}/mensal
-                    {s.nextBillingDate && ` · Próx: ${new Intl.DateTimeFormat("pt-BR").format(s.nextBillingDate)}`}
                   </p>
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
+                  {s.nextBillingDate && (s.status === "ACTIVE" || s.status === "PAUSED") ? (
+                    <>
+                      {/* timeZone UTC: é uma coluna "somente data" (meia-noite UTC). */}
+                      {new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(s.nextBillingDate)}
+                      {s.nextBillingDate.toISOString().slice(0, 10) < todayKey && (
+                        <span className="block text-xs font-medium text-destructive">vencida</span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </TableCell>
                 <TableCell>
                   <Badge variant={s.status === "ACTIVE" ? "default" : s.status === "PENDING" ? "outline" : "secondary"}>

@@ -123,6 +123,50 @@ export async function setClientSubscriptionStatus(params: {
   );
 }
 
+/** Ação gravada no ActivityLog a cada pagamento de mensalidade registrado. */
+export const SUBSCRIPTION_PAYMENT_ACTION = "SUBSCRIPTION_PAYMENT";
+
+/**
+ * "Registrar pagamento": o cliente pagou a mensalidade (no balcão, Pix etc.
+ * — não há gateway). Empurra o vencimento um mês pra frente a partir do
+ * vencimento atual (mantém o dia do ciclo mesmo se pagou atrasado ou
+ * adiantado), zera os créditos usados do período e deixa o registro no
+ * ActivityLog com o valor — é dele que o Fechamento do mês soma as
+ * "assinaturas registradas".
+ */
+export async function registerSubscriptionPayment(params: { ctx: AuthenticatedContext; subscriptionId: string }) {
+  requireAdmin(params.ctx);
+  return withAppContext(params.ctx, async (tx) => {
+    const sub = await tx.clientSubscription.findUniqueOrThrow({
+      where: { id: params.subscriptionId },
+      include: { plan: true, client: { select: { name: true } } },
+    });
+    if (sub.status !== "ACTIVE" && sub.status !== "PAUSED") {
+      throw new Error("Só dá pra registrar pagamento de assinatura ativa ou pausada.");
+    }
+    // nextBillingDate é "somente data" (meia-noite UTC) — soma o mês em UTC
+    // pra não escorregar de dia por causa do fuso.
+    const base = sub.nextBillingDate ?? new Date();
+    const next = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, base.getUTCDate()));
+    const amount = Number(sub.plan.priceMonthly);
+
+    const updated = await tx.clientSubscription.update({
+      where: { id: sub.id },
+      data: { status: "ACTIVE", nextBillingDate: next, creditsUsedThisPeriod: 0, gracePeriodEndsAt: null },
+    });
+    await tx.activityLog.create({
+      data: {
+        actorUserId: params.ctx.sessionUserId,
+        action: SUBSCRIPTION_PAYMENT_ACTION,
+        entityType: "ClientSubscription",
+        entityId: sub.id,
+        metadata: { amount, planName: sub.plan.name, clientName: sub.client.name },
+      },
+    });
+    return { nextBillingDate: updated.nextBillingDate, amount };
+  });
+}
+
 /** Cliente cancela a própria assinatura (tela "Plano" do app). */
 export async function cancelOwnSubscription(params: { ctx: AuthenticatedContext; subscriptionId: string }) {
   if (params.ctx.role !== "CLIENT") throw new Error("Ação exclusiva do cliente dono da assinatura.");

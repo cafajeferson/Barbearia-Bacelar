@@ -92,8 +92,8 @@ export default async function FechamentoPage({
           </ChecklistItem>
           <ChecklistItem ok={checklist.overdueSubscriptions === 0} href="/assinaturas">
             {checklist.overdueSubscriptions === 0
-              ? "Nenhuma assinatura com cobrança vencida"
-              : `${checklist.overdueSubscriptions} assinatura(s) com cobrança vencida`}
+              ? "Nenhuma assinatura sem pagamento registrado"
+              : `${checklist.overdueSubscriptions} assinatura(s) sem pagamento registrado (vencidas)`}
           </ChecklistItem>
           <ChecklistItem ok={totals.pending === 0} href="/comissoes">
             {totals.pending === 0
@@ -114,9 +114,11 @@ export default async function FechamentoPage({
           <p className="text-xl font-semibold">{formatBRL(totals.products)}</p>
         </Card>
         <Card className="p-4">
-          <p className="text-sm text-muted-foreground">Assinaturas</p>
+          <p className="text-sm text-muted-foreground">Assinaturas registradas</p>
           <p className="text-xl font-semibold">{formatBRL(totals.subscriptions)}</p>
-          <p className="text-xs text-muted-foreground">{checklist.activeSubscriptions} ativa(s), mensalidades somadas</p>
+          <p className="text-xs text-muted-foreground">
+            {checklist.subscriptionPayments} pagamento(s) registrado(s) no mês
+          </p>
         </Card>
         <Card className="p-4">
           <p className="text-sm text-muted-foreground">Total do mês</p>

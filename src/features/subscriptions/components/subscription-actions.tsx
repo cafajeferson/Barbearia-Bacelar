@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, X, Plus } from "lucide-react";
+import { Check, X, Plus, Receipt } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -11,6 +11,7 @@ import {
   rejectClientSubscriptionAction,
   setClientSubscriptionStatusAction,
   addManualCreditUsageAction,
+  registerSubscriptionPaymentAction,
 } from "../actions";
 
 export function SubscriptionActions({
@@ -59,7 +60,18 @@ export function SubscriptionActions({
 
   if (status === "ACTIVE" || status === "PAUSED") {
     return (
-      <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center justify-end gap-1">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={isPending}
+          title="O cliente pagou a mensalidade: renova por mais um mês e zera os usos"
+          onClick={() =>
+            run(() => registerSubscriptionPaymentAction({ subscriptionId }), "Pagamento registrado — assinatura renovada.")
+          }
+        >
+          <Receipt className="mr-1 h-4 w-4" /> Registrar pagamento
+        </Button>
         <Select
           value={status}
           onValueChange={(value) =>

@@ -1,5 +1,6 @@
 import type { AuthenticatedContext } from "@/server/auth/getAuthContext";
 import { withAppContext } from "@/server/db/context";
+import { SUBSCRIPTION_PAYMENT_ACTION } from "@/features/subscriptions/service";
 
 function requireAdmin(ctx: AuthenticatedContext) {
   if (ctx.role !== "ADMIN") throw new Error("Só admin pode fechar o mês.");
@@ -70,12 +71,19 @@ export async function getMonthClosing(params: { ctx: AuthenticatedContext; perio
       });
       return { entries, professionals };
     }),
-    withAppContext(ctx, (tx) =>
-      tx.clientSubscription.findMany({
+    withAppContext(ctx, async (tx) => {
+      const activeSubs = await tx.clientSubscription.findMany({
         where: { status: "ACTIVE" },
-        select: { nextBillingDate: true, plan: { select: { priceMonthly: true } } },
-      }),
-    ),
+        select: { nextBillingDate: true },
+      });
+      // Pagamentos de mensalidade registrados no mês (botão "Registrar
+      // pagamento" em Assinaturas) — o valor fica no metadata do log.
+      const payments = await tx.activityLog.findMany({
+        where: { action: SUBSCRIPTION_PAYMENT_ACTION, createdAt: { gte: start, lt: end } },
+        select: { metadata: true },
+      });
+      return { activeSubs, payments };
+    }),
   ]);
 
   const todayKey = new Date().toISOString().slice(0, 10);
@@ -131,8 +139,11 @@ export async function getMonthClosing(params: { ctx: AuthenticatedContext; perio
   );
 
   const sum = (pick: (r: ClosingRow) => number) => list.reduce((s, r) => s + pick(r), 0);
-  const subscriptionsRevenue = c.reduce((s, sub) => s + Number(sub.plan.priceMonthly), 0);
-  const overdueSubscriptions = c.filter(
+  const subscriptionsRevenue = c.payments.reduce((s, p) => {
+    const amount = (p.metadata as { amount?: unknown } | null)?.amount;
+    return s + (typeof amount === "number" ? amount : 0);
+  }, 0);
+  const overdueSubscriptions = c.activeSubs.filter(
     (sub) => sub.nextBillingDate && sub.nextBillingDate.toISOString().slice(0, 10) < todayKey,
   ).length;
 
@@ -151,7 +162,8 @@ export async function getMonthClosing(params: { ctx: AuthenticatedContext; perio
     checklist: {
       openAppointments: openCount,
       overdueSubscriptions,
-      activeSubscriptions: c.length,
+      activeSubscriptions: c.activeSubs.length,
+      subscriptionPayments: c.payments.length,
       pendingCommissionProfessionals: list.filter((r) => r.pending > 0).length,
       hasCommissionEntries: b.entries.length > 0,
     },
