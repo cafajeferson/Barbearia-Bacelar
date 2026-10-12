@@ -12,7 +12,9 @@ import { withAppContext } from "@/server/db/context";
 const LEGAL_TRANSITIONS: Record<AppointmentStatus, AppointmentStatus[]> = {
   SCHEDULED: ["CONFIRMED", "CANCELLED", "NO_SHOW"],
   CONFIRMED: ["IN_PROGRESS", "CANCELLED", "NO_SHOW"],
-  IN_PROGRESS: ["COMPLETED", "NO_SHOW"],
+  // CANCELLED: atendimento iniciado por engano (clicou em "Iniciar" no
+  // agendamento errado) precisa poder ser desfeito sem virar falta do cliente.
+  IN_PROGRESS: ["COMPLETED", "NO_SHOW", "CANCELLED"],
   COMPLETED: [],
   CANCELLED: [],
   NO_SHOW: [],
@@ -64,12 +66,19 @@ export async function transitionAppointmentStatus(params: {
     const isOverride = !isLegal;
 
     if (isOverride) {
-      if (ctx.role !== "ADMIN") {
+      // Além do admin, o profissional pode EXCLUIR (cancelar) um atendimento
+      // dele que já foi concluído ou marcado como falta — lançou no cliente
+      // errado, duplicou, etc. Só nessa direção (nunca "reabrir" ou
+      // "concluir" por fora do fluxo), sempre com motivo, e fica registrado
+      // como override no histórico. A RLS já limita ao que é dele.
+      const professionalRemoving =
+        ctx.role === "PROFESSIONAL" && toStatus === "CANCELLED" && appointment.status !== "CANCELLED";
+      if (ctx.role !== "ADMIN" && !professionalRemoving) {
         throw new IllegalTransitionError(appointment.status, toStatus);
       }
       if (!overrideReason?.trim()) {
         throw new Error(
-          "Para forçar essa transição fora do fluxo normal, informe o motivo.",
+          "Informe o motivo para excluir um atendimento que já foi concluído ou marcado como falta.",
         );
       }
     } else {

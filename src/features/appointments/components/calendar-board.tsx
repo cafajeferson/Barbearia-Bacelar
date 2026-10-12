@@ -561,16 +561,33 @@ export function CalendarBoard({
                 variant="ghost"
                 className="text-destructive hover:text-destructive"
                 onClick={() => {
-                  cancelAppointmentAction({ appointmentId: selected.id })
+                  // Concluído / falta: sai do fluxo normal, então o servidor
+                  // exige um motivo (fica no histórico do agendamento).
+                  const needsReason = selected.status === "COMPLETED" || selected.status === "NO_SHOW";
+                  let reason: string | undefined;
+                  if (needsReason) {
+                    const typed = window.prompt(
+                      "Este atendimento já foi fechado. Informe o motivo para excluí-lo da agenda:",
+                    );
+                    if (typed === null) return;
+                    if (!typed.trim()) {
+                      toast.error("Informe um motivo para excluir.");
+                      return;
+                    }
+                    reason = typed.trim();
+                  } else if (!window.confirm("Excluir este agendamento da agenda?")) {
+                    return;
+                  }
+                  cancelAppointmentAction({ appointmentId: selected.id, reason })
                     .then(() => {
-                      toast.success("Agendamento cancelado.");
+                      toast.success("Agendamento excluído da agenda.");
                       setSelectedId(null);
                       router.refresh();
                     })
-                    .catch((err) => toast.error(err instanceof Error ? err.message : "Erro ao cancelar."));
+                    .catch((err) => toast.error(err instanceof Error ? err.message : "Erro ao excluir."));
                 }}
               >
-                Cancelar agendamento
+                Excluir agendamento
               </Button>
               <AppointmentStatusActions appointmentId={selected.id} status={selected.status} />
             </DialogFooter>
