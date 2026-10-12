@@ -21,6 +21,7 @@ import {
   Settings,
   LogOut,
   Menu,
+  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -44,6 +45,7 @@ const GROUPS: { label: string; links: { href: string; label: string; icon: typeo
   {
     label: "FINANCEIRO",
     links: [
+      { href: "/fechamento", label: "Fechamento do mês", icon: Wallet },
       { href: "/comissoes", label: "Comissões", icon: Calculator },
       { href: "/assinaturas", label: "Assinaturas", icon: CreditCard },
       { href: "/promocoes", label: "Promoções", icon: Tag },
@@ -155,7 +157,7 @@ function SidebarBody({ userName, userRole }: { userName: string; userRole: strin
  */
 export function AdminSidebar({ userName, userRole }: { userName: string; userRole: string }) {
   return (
-    <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
+    <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex print:!hidden">
       <SidebarBody userName={userName} userRole={userRole} />
     </aside>
   );

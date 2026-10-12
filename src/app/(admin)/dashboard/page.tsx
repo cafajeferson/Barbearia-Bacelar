@@ -37,11 +37,21 @@ function KpiCard({
   );
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string; unit?: string }>;
+}) {
   const ctx = await getAuthContext();
   if (!ctx) return null;
 
-  const data = await getDashboardData({ ctx });
+  // Filtros globais da barra do topo (Período / Unidade) — antes o dashboard
+  // os ignorava e mostrava sempre "tudo", qualquer que fosse a seleção.
+  const { period, unit } = await searchParams;
+  const periodMatch = period?.match(/^(\d{4})-(\d{2})$/);
+  const periodStart = periodMatch ? new Date(Number(periodMatch[1]), Number(periodMatch[2]) - 1, 1) : undefined;
+
+  const data = await getDashboardData({ ctx, unitId: unit || undefined, periodStart });
   const now = new Date();
 
   return (

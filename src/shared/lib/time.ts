@@ -68,3 +68,14 @@ export function rangesOverlap(
 ): boolean {
   return timeToMinutes(startA) < timeToMinutes(endB) && timeToMinutes(endA) > timeToMinutes(startB);
 }
+
+/**
+ * "YYYY-MM-DD" (ou "YYYY-MM") -> Date à meia-noite LOCAL daquele dia.
+ * `new Date("2026-10-01")` é meia-noite UTC, que no fuso do Brasil ainda é
+ * 30/09 às 21h — qualquer código que depois leia getMonth()/getDate()
+ * locais (ex.: o mês de apuração das comissões) cairia no mês anterior.
+ */
+export function parseLocalDate(value: string): Date {
+  const [y, m, d] = value.slice(0, 10).split("-").map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+}

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getAuthContext } from "@/server/auth/getAuthContext";
 import * as service from "./service";
+import { parseLocalDate } from "@/shared/lib/time";
 
 async function requireAuth() {
   const ctx = await getAuthContext();
@@ -12,7 +13,7 @@ async function requireAuth() {
 
 export async function recalculateCommissionsAction(input: { periodMonth: string }) {
   const ctx = await requireAuth();
-  const result = await service.recalculateCommissions({ ctx, periodMonth: new Date(input.periodMonth) });
+  const result = await service.recalculateCommissions({ ctx, periodMonth: parseLocalDate(input.periodMonth) });
   revalidatePath("/comissoes");
   return result;
 }
@@ -42,7 +43,7 @@ export async function markCommissionsPaidAction(input: {
   const result = await service.markCommissionsPaid({
     ctx,
     professionalId: input.professionalId,
-    periodMonth: new Date(input.periodMonth),
+    periodMonth: parseLocalDate(input.periodMonth),
     type: input.type,
   });
   revalidatePath("/comissoes");

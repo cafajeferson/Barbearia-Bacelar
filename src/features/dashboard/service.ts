@@ -70,13 +70,23 @@ export async function getDashboardData(params: {
         where: { ...unitFilter, status: { in: ["SCHEDULED", "CONFIRMED"] } },
       });
       const activeProfessionals = await tx.professional.count({ where: { active: true } });
-      return { clientCounts, pendingCount, activeProfessionals };
+      // Painel: comissões ainda a pagar (do período escolhido, ou tudo) e
+      // assinaturas ativas com a soma das mensalidades.
+      const pendingCommissions = await tx.commissionEntry.aggregate({
+        where: { status: "PENDING", periodMonth: periodStart ? { gte: periodStart } : undefined },
+        _sum: { calculatedAmount: true },
+      });
+      const activeSubs = await tx.clientSubscription.findMany({
+        where: { status: "ACTIVE" },
+        select: { plan: { select: { priceMonthly: true } } },
+      });
+      return { clientCounts, pendingCount, activeProfessionals, pendingCommissions, activeSubs };
     }),
   ]);
 
   const { recentAppointments, upcoming, recentActivity } = groupA;
   const { periodAppointments, allOpenAppointments } = groupB;
-  const { clientCounts, pendingCount, activeProfessionals } = groupC;
+  const { clientCounts, pendingCount, activeProfessionals, pendingCommissions, activeSubs } = groupC;
 
   {
     const dayKey = (d: Date) => d.toISOString().slice(0, 10);
@@ -167,9 +177,9 @@ export async function getDashboardData(params: {
         totalClients,
         newClientsInPeriod,
         activeProfessionals,
-        commissionsInPeriod: 0, // Fase 4
-        mrr: 0, // Fase 4
-        activeSubscriptions: 0, // Fase 4
+        commissionsInPeriod: Number(pendingCommissions._sum.calculatedAmount ?? 0),
+        mrr: activeSubs.reduce((sum, s) => sum + Number(s.plan.priceMonthly), 0),
+        activeSubscriptions: activeSubs.length,
         cancellationsInPeriod,
       },
       upcoming,

@@ -50,7 +50,7 @@ export function AdminTopbar({
   }
 
   return (
-    <div className="sticky top-0 z-30 flex items-center gap-2 overflow-x-auto border-b bg-background/95 px-3 py-3 backdrop-blur lg:px-6">
+    <div className="sticky top-0 z-30 flex items-center gap-2 overflow-x-auto border-b bg-background/95 px-3 py-3 backdrop-blur lg:px-6 print:hidden">
       {leading}
       <Select value={period} onValueChange={(v) => updateParam("period", v, ["date", "view"])}>
         <SelectTrigger className="w-auto shrink-0 gap-2 whitespace-nowrap rounded-full border-none bg-secondary px-3 py-1.5 text-xs">

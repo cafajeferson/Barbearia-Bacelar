@@ -12,6 +12,7 @@ const ADMIN_PREFIXES = [
   "/equipe",
   "/catalogo",
   "/produtos",
+  "/fechamento",
   "/comissoes",
   "/assinaturas",
   "/promocoes",
