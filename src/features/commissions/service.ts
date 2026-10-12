@@ -57,6 +57,61 @@ function computeServiceCommission(a: AppointmentForCommission, settings: Commiss
 }
 
 /**
+ * Comissão de assinatura do mês: metade da soma das mensalidades das
+ * assinaturas ativas vira um "bolo", dividido igualmente entre os
+ * atendimentos CONCLUÍDOS no mês que foram pagos com o plano; cada barbeiro
+ * recebe a parte dos atendimentos que fez. É uma linha por barbeiro por mês
+ * (não por atendimento), e o valor muda ao longo do mês conforme entram
+ * mais atendimentos — o definitivo é o da apuração/fechamento.
+ *
+ * `paidFor` diz se a linha daquele barbeiro já estava paga (o recálculo
+ * recria a linha mantendo o "pago").
+ */
+async function writeSubscriptionCommissions(
+  tx: Parameters<Parameters<typeof withAppContext>[1]>[0],
+  start: Date,
+  end: Date,
+  paidFor: (professionalId: string) => { paidAt: Date | null } | null,
+) {
+  const creditUsages = await tx.subscriptionCreditUsage.findMany({
+    where: { appointment: { status: "COMPLETED", scheduledDate: { gte: start, lt: end } } },
+    include: { appointment: true },
+  });
+  const activeSubs = await tx.clientSubscription.findMany({
+    where: { status: "ACTIVE" },
+    include: { plan: true },
+  });
+  const totalSubscriptionRevenue = activeSubs.reduce((sum, s) => sum + Number(s.plan.priceMonthly), 0);
+  const totalAttendances = creditUsages.length;
+  if (totalAttendances === 0 || totalSubscriptionRevenue <= 0) return totalAttendances;
+
+  const perAttendance = totalSubscriptionRevenue / 2 / totalAttendances;
+  const byProfessional = new Map<string, number>();
+  for (const cu of creditUsages) {
+    const profId = cu.appointment.professionalId;
+    byProfessional.set(profId, (byProfessional.get(profId) ?? 0) + 1);
+  }
+
+  for (const professionalId of Array.from(byProfessional.keys())) {
+    const count = byProfessional.get(professionalId) ?? 0;
+    const paid = paidFor(professionalId);
+    await tx.commissionEntry.create({
+      data: {
+        professionalId,
+        type: "SUBSCRIPTION",
+        periodMonth: start,
+        baseAmount: totalSubscriptionRevenue,
+        pct: 0,
+        calculatedAmount: perAttendance * count,
+        calculationFormula: `(${formatBRL(totalSubscriptionRevenue)} / 2) / ${totalAttendances} atend. × ${count} atend.`,
+        ...(paid ? { status: "PAID" as const, paidAt: paid.paidAt } : {}),
+      },
+    });
+  }
+  return totalAttendances;
+}
+
+/**
  * Mantém a comissão de UM atendimento em dia, na hora: concluiu -> a linha
  * aparece em Comissões e no Fechamento sem ninguém precisar clicar em
  * "Recalcular"; deixou de estar concluído (excluído/cancelado) -> a linha
@@ -77,28 +132,61 @@ export async function syncAppointmentCommission(appointmentId: string) {
     const existing = await tx.commissionEntry.findMany({
       where: { appointmentId, type: { in: ["SERVICE", "WALK_IN"] } },
     });
-    if (existing.some((e) => e.status === "PAID")) return;
-    if (existing.length > 0) {
-      await tx.commissionEntry.deleteMany({ where: { id: { in: existing.map((e) => e.id) } } });
-    }
-    if (a.status !== "COMPLETED") return;
-
-    const settings = await tx.systemSettings.findUniqueOrThrow({ where: { id: 1 } });
-    const c = computeServiceCommission(a, settings);
     // Mês do atendimento (coluna "somente data": componentes em UTC).
     const periodMonth = new Date(a.scheduledDate.getUTCFullYear(), a.scheduledDate.getUTCMonth(), 1);
-    await tx.commissionEntry.create({
-      data: {
-        professionalId: a.professionalId,
-        type: c.type,
-        appointmentId: a.id,
-        periodMonth,
-        baseAmount: c.base,
-        pct: c.pct,
-        calculatedAmount: c.amount,
-        calculationFormula: c.formula,
-      },
-    });
+    const nextMonth = new Date(a.scheduledDate.getUTCFullYear(), a.scheduledDate.getUTCMonth() + 1, 1);
+
+    if (!existing.some((e) => e.status === "PAID")) {
+      if (existing.length > 0) {
+        await tx.commissionEntry.deleteMany({ where: { id: { in: existing.map((e) => e.id) } } });
+      }
+      if (a.status === "COMPLETED") {
+        const settings = await tx.systemSettings.findUniqueOrThrow({ where: { id: 1 } });
+        const c = computeServiceCommission(a, settings);
+        // Total R$ 0 (pago com o plano): sem linha de serviço zerada.
+        if (c.amount > 0) {
+          await tx.commissionEntry.create({
+            data: {
+              professionalId: a.professionalId,
+              type: c.type,
+              appointmentId: a.id,
+              periodMonth,
+              baseAmount: c.base,
+              pct: c.pct,
+              calculatedAmount: c.amount,
+              calculationFormula: c.formula,
+            },
+          });
+        }
+      }
+    }
+
+    // Atendimento pago com o plano: o rateio de assinatura do mês muda
+    // (entrou ou saiu um atendimento do bolo) — refaz as linhas ainda
+    // pendentes. Quem já recebeu a de assinatura deste mês fica como está.
+    const usedPlan = await tx.subscriptionCreditUsage.count({ where: { appointmentId } });
+    if (usedPlan > 0) {
+      const paidSubs = new Set(
+        (
+          await tx.commissionEntry.findMany({
+            where: { periodMonth, type: "SUBSCRIPTION", status: "PAID" },
+            select: { professionalId: true },
+          })
+        ).map((e) => e.professionalId),
+      );
+      await tx.commissionEntry.deleteMany({ where: { periodMonth, type: "SUBSCRIPTION", status: "PENDING" } });
+      // Para quem já foi pago, cria-se a linha recalculada como paga e
+      // apaga-se a antiga — assim nunca ficam duas linhas do mesmo barbeiro.
+      const stale = await tx.commissionEntry.findMany({
+        where: { periodMonth, type: "SUBSCRIPTION", status: "PAID" },
+        select: { id: true, professionalId: true, paidAt: true },
+      });
+      const paidAtBy = new Map(stale.map((e) => [e.professionalId, e.paidAt]));
+      await tx.commissionEntry.deleteMany({ where: { id: { in: stale.map((e) => e.id) } } });
+      await writeSubscriptionCommissions(tx, periodMonth, nextMonth, (professionalId) =>
+        paidSubs.has(professionalId) ? { paidAt: paidAtBy.get(professionalId) ?? null } : null,
+      );
+    }
   });
 }
 
@@ -131,6 +219,9 @@ export async function recalculateCommissions(params: { ctx: AuthenticatedContext
     });
     for (const a of appointments) {
       const c = computeServiceCommission(a, settings);
+      // Atendimento pago com o plano tem total R$ 0 — a comissão dele é a
+      // de assinatura (rateio abaixo), não uma linha de serviço zerada.
+      if (c.amount === 0) continue;
       const key = `${a.professionalId}|${c.type}|${a.id}`;
       const paidAt = alreadyPaid.get(key);
       await tx.commissionEntry.create({
@@ -150,46 +241,10 @@ export async function recalculateCommissions(params: { ctx: AuthenticatedContext
     }
 
     // --- Comissão de assinaturas: pool dividido pelos atendimentos cobertos ---
-    const creditUsages = await tx.subscriptionCreditUsage.findMany({
-      where: { appointment: { scheduledDate: { gte: start, lt: end } } },
-      include: { appointment: true },
+    const totalAttendances = await writeSubscriptionCommissions(tx, start, end, (professionalId) => {
+      const key = `${professionalId}|SUBSCRIPTION|`;
+      return alreadyPaid.has(key) ? { paidAt: alreadyPaid.get(key) ?? null } : null;
     });
-    const activeSubs = await tx.clientSubscription.findMany({
-      where: { status: "ACTIVE" },
-      include: { plan: true },
-    });
-    const totalSubscriptionRevenue = activeSubs.reduce((sum, s) => sum + Number(s.plan.priceMonthly), 0);
-    const totalAttendances = creditUsages.length;
-
-    if (totalAttendances > 0 && totalSubscriptionRevenue > 0) {
-      const pool = totalSubscriptionRevenue / 2;
-      const perAttendance = pool / totalAttendances;
-
-      const byProfessional = new Map<string, number>();
-      for (const cu of creditUsages) {
-        const profId = cu.appointment.professionalId;
-        byProfessional.set(profId, (byProfessional.get(profId) ?? 0) + 1);
-      }
-
-      for (const professionalId of Array.from(byProfessional.keys())) {
-        const count = byProfessional.get(professionalId) ?? 0;
-        const amount = perAttendance * count;
-        await tx.commissionEntry.create({
-          data: {
-            professionalId,
-            type: "SUBSCRIPTION",
-            periodMonth: start,
-            baseAmount: totalSubscriptionRevenue,
-            pct: 0,
-            calculatedAmount: amount,
-            calculationFormula: `(${formatBRL(totalSubscriptionRevenue)} / 2) / ${totalAttendances} atend. × ${count} atend.`,
-            ...(alreadyPaid.has(`${professionalId}|SUBSCRIPTION|`)
-              ? { status: "PAID" as const, paidAt: alreadyPaid.get(`${professionalId}|SUBSCRIPTION|`) }
-              : {}),
-          },
-        });
-      }
-    }
 
     return { appointmentsProcessed: appointments.length, subscriptionAttendances: totalAttendances };
   });
