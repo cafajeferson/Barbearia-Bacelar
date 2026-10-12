@@ -13,8 +13,8 @@ export default async function PromocoesPage() {
   const promotions = await listPromotions({ ctx });
 
   return (
-    <main className="space-y-4 p-6">
-      <div className="flex items-center justify-between">
+    <main className="space-y-4 p-3 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Promoções</h1>
           <p className="text-muted-foreground">{promotions.length} cadastradas</p>

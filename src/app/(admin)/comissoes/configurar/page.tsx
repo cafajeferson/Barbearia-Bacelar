@@ -23,7 +23,7 @@ export default async function ConfigurarComissoesPage() {
   }));
 
   return (
-    <main className="space-y-4 p-6">
+    <main className="space-y-4 p-3 sm:p-6">
       <div>
         <Link
           href="/comissoes"

@@ -73,13 +73,13 @@ export default async function AgendaMestrePage({
   const isToday = date.getTime() === today.getTime();
 
   return (
-    <main className="space-y-4 p-6">
-      <div className="flex items-center justify-between">
+    <main className="space-y-4 p-3 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Agenda Mestre</h1>
           <p className="text-muted-foreground">Visão geral de todos os agendamentos</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <AgendaToolbar />
           <BlockTimeDialog professionals={professionals} defaultDate={dateISO} />
           <NewAppointmentDialog professionals={professionals} defaultDate={dateISO} unitId={unit.id} />

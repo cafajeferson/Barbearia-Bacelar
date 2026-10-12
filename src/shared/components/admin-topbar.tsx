@@ -24,7 +24,14 @@ function buildMonthOptions() {
   return options;
 }
 
-export function AdminTopbar({ units }: { units: { id: string; name: string; address: string }[] }) {
+export function AdminTopbar({
+  units,
+  leading,
+}: {
+  units: { id: string; name: string; address: string }[];
+  /** Botão do menu no celular (AdminMobileNav) — fica à esquerda dos filtros. */
+  leading?: React.ReactNode;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -43,9 +50,10 @@ export function AdminTopbar({ units }: { units: { id: string; name: string; addr
   }
 
   return (
-    <div className="flex items-center gap-2 border-b bg-background/95 px-6 py-3 backdrop-blur">
+    <div className="sticky top-0 z-30 flex items-center gap-2 overflow-x-auto border-b bg-background/95 px-3 py-3 backdrop-blur lg:px-6">
+      {leading}
       <Select value={period} onValueChange={(v) => updateParam("period", v, ["date", "view"])}>
-        <SelectTrigger className="w-auto gap-2 rounded-full border-none bg-secondary px-3 py-1.5 text-xs">
+        <SelectTrigger className="w-auto shrink-0 gap-2 whitespace-nowrap rounded-full border-none bg-secondary px-3 py-1.5 text-xs">
           <span className="flex items-center gap-1.5">
             <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
             <span className="text-muted-foreground">Período ·</span>
@@ -63,7 +71,7 @@ export function AdminTopbar({ units }: { units: { id: string; name: string; addr
       </Select>
 
       <Select value={unit} onValueChange={(v) => updateParam("unit", v)}>
-        <SelectTrigger className="w-auto gap-2 rounded-full border-none bg-secondary px-3 py-1.5 text-xs">
+        <SelectTrigger className="w-auto shrink-0 gap-2 whitespace-nowrap rounded-full border-none bg-secondary px-3 py-1.5 text-xs">
           <span className="flex items-center gap-1.5">
             <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
             <span className="text-muted-foreground">Unidade ·</span>

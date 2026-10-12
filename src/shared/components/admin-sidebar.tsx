@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -19,8 +20,10 @@ import {
   Clock,
   Settings,
   LogOut,
+  Menu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 const TOP_LINKS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -91,18 +94,13 @@ function NavLink({
   );
 }
 
-export function AdminSidebar({
-  userName,
-  userRole,
-}: {
-  userName: string;
-  userRole: string;
-}) {
+/** Conteúdo do menu (logo, links, usuário) — o mesmo na barra fixa do desktop e na gaveta do celular. */
+function SidebarBody({ userName, userRole }: { userName: string; userRole: string }) {
   const pathname = usePathname();
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
+    <>
       <div className="flex items-center gap-2 border-b border-sidebar-border px-4 py-4">
         <Image
           src="/brand/logo.jpg"
@@ -146,6 +144,45 @@ export function AdminSidebar({
           <LogOut className="h-4 w-4" />
         </button>
       </div>
+    </>
+  );
+}
+
+/**
+ * Barra lateral fixa — só de `lg` pra cima. No celular ela ocupava 256px
+ * dos ~390 da tela e espremia todo o conteúdo numa tira; lá o menu vira
+ * uma gaveta aberta pelo botão do topo (AdminMobileNav).
+ */
+export function AdminSidebar({ userName, userRole }: { userName: string; userRole: string }) {
+  return (
+    <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
+      <SidebarBody userName={userName} userRole={userRole} />
     </aside>
+  );
+}
+
+/** Botão de menu + gaveta lateral pro admin no celular/tablet (abaixo de `lg`). */
+export function AdminMobileNav({ userName, userRole }: { userName: string; userRole: string }) {
+  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+
+  // Fecha sozinha ao navegar — senão a gaveta continuava por cima da tela nova.
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-secondary lg:hidden"
+        aria-label="Abrir menu"
+      >
+        <Menu className="h-5 w-5" />
+      </SheetTrigger>
+      <SheetContent side="left" className="flex w-72 max-w-[85vw] flex-col gap-0 border-sidebar-border bg-sidebar p-0">
+        <SheetTitle className="sr-only">Menu</SheetTitle>
+        <SidebarBody userName={userName} userRole={userRole} />
+      </SheetContent>
+    </Sheet>
   );
 }

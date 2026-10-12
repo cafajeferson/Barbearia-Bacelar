@@ -52,14 +52,14 @@ export function ProfessionalCommissionRow({
   return (
     <div className="border-b last:border-b-0">
       <button
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+        className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3 text-left"
         onClick={() => setExpanded((e) => !e)}
       >
         <span className="flex items-center gap-2 font-medium">
           {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           {name}
         </span>
-        <span className="flex items-center gap-4 text-sm">
+        <span className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
           <span className="text-muted-foreground">Pendente: {formatBRL(pending)}</span>
           <span className="text-success">Pago: {formatBRL(paid)}</span>
           <span className="font-semibold">Total: {formatBRL(pending + paid)}</span>

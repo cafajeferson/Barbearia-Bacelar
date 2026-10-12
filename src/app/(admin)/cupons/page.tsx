@@ -22,13 +22,13 @@ export default async function CuponsPage({
   const coupons = await listCoupons({ ctx, onlyActive: filterActive });
 
   return (
-    <main className="space-y-4 p-6">
-      <div className="flex items-center justify-between">
+    <main className="space-y-4 p-3 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Cupons</h1>
           <p className="text-muted-foreground">{coupons.length} cupons</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <GenerateRetentionButton />
           <CouponFormDialog />
         </div>

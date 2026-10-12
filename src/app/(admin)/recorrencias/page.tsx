@@ -159,7 +159,7 @@ export default async function RecorrenciasPage() {
   const { pendentes, emAtencao, saudaveis } = await getRecurrenciasData({ ctx });
 
   return (
-    <main className="space-y-4 p-6">
+    <main className="space-y-4 p-3 sm:p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Recorrências</h1>

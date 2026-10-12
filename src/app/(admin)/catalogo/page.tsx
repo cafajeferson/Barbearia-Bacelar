@@ -16,8 +16,8 @@ export default async function CatalogoPage() {
   const sections = await listCatalog({ ctx });
 
   return (
-    <main className="space-y-4 p-6">
-      <div className="flex items-center justify-between">
+    <main className="space-y-4 p-3 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Catálogo</h1>
           <p className="text-muted-foreground">{sections.length} seções</p>

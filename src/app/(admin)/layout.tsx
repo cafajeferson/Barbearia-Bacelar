@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getAuthContext, getCurrentUserName } from "@/server/auth/getAuthContext";
 import { withAppContext } from "@/server/db/context";
 import { ttlCached } from "@/server/db/ttl-cache";
-import { AdminSidebar } from "@/shared/components/admin-sidebar";
+import { AdminMobileNav, AdminSidebar } from "@/shared/components/admin-sidebar";
 import { AdminTopbar } from "@/shared/components/admin-topbar";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -27,8 +27,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <div className="flex min-h-screen">
       <AdminSidebar userName={name ?? "Admin"} userRole="Administrador" />
-      <div className="flex-1 overflow-x-hidden">
-        <AdminTopbar units={units} />
+      {/* min-w-0: sem isso um filho largo (tabela, grade da agenda) empurra
+          a coluna pra fora da tela no celular em vez de rolar dentro dela. */}
+      <div className="min-w-0 flex-1">
+        <AdminTopbar
+          units={units}
+          leading={<AdminMobileNav userName={name ?? "Admin"} userRole="Administrador" />}
+        />
         {children}
       </div>
     </div>

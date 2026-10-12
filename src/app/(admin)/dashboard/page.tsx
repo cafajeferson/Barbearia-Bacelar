@@ -45,7 +45,7 @@ export default async function DashboardPage() {
   const now = new Date();
 
   return (
-    <main className="space-y-6 p-6">
+    <main className="space-y-6 p-3 sm:p-6">
       <div>
         <h1 className="text-2xl font-semibold">
           {greeting(data.greetingHour)}

@@ -10,7 +10,7 @@ export default async function ConfiguracoesPage() {
   const settings = await getSystemSettings({ ctx });
 
   return (
-    <main className="space-y-8 p-6">
+    <main className="space-y-8 p-3 sm:p-6">
       <SystemSettingsForm
         initial={{
           noShowThreshold: settings.noShowThreshold,

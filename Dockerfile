@@ -22,13 +22,21 @@ COPY . .
 RUN npx prisma generate
 # NEXT_PUBLIC_* e outras envs necessárias em build-time (não segredos de
 # runtime) entram aqui via --build-arg no docker-compose/CI.
-RUN npm run build
+# BUILD_ID: identificador deste build, usado pelo app pra recarregar sozinho
+# os navegadores que ficaram com a versão antiga aberta (ver next.config.mjs).
+RUN BUILD_ID=$(date +%s) npm run build
 
 FROM node:22-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+# Fuso da barbearia. Sem isso o container roda em UTC e todo cálculo que
+# combina data + "HH:MM" do expediente (antecedência mínima do cliente,
+# varredura de no-show, lembrete de 24h, "hoje" da agenda) sai 3h errado —
+# o cliente era barrado com "pelo menos 30 minutos de antecedência" ao
+# tentar um horário válido das próximas 3 horas.
+ENV TZ=America/Sao_Paulo
 
 RUN groupadd --system --gid 1001 nodejs \
   && useradd --system --uid 1001 --gid nodejs nextjs

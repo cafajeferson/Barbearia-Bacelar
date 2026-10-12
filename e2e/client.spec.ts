@@ -5,7 +5,8 @@ async function pickAvailableDay(page: Page) {
   // "main" aqui nunca casava nada. O botão de cada dia também mistura
   // dia-da-semana + número num só nó de texto acessível (ex.: "sáb. 22"),
   // por isso o filtro casa por "termina em dígitos", não por texto exato.
-  const dayButtons = page.getByRole("button").filter({ hasText: /\d{1,2}$/ });
+  // O calendário do mês desabilita os dias que já passaram — só os clicáveis.
+  const dayButtons = page.locator("button:not([disabled])").filter({ hasText: /^\D*\d{1,2}$/ });
   const count = await dayButtons.count();
   for (let i = 0; i < count; i++) {
     await dayButtons.nth(i).click();
@@ -50,14 +51,18 @@ test.describe("Cliente — Home e wizard de agendamento", () => {
     await page.getByText("Qualquer Profissional").click();
     await page.getByRole("button", { name: "Continuar" }).click();
 
-    // Passo 3: Horário
+    // Passo 3: Produtos (opcional — segue sem escolher nenhum)
+    await expect(page.getByRole("heading", { name: "Vai precisar de algum produto?" })).toBeVisible();
+    await page.getByRole("button", { name: "Continuar" }).click();
+
+    // Passo 4: Horário
     await expect(page.getByRole("heading", { name: "Escolha o horário" })).toBeVisible();
     const found = await pickAvailableDay(page);
     expect(found).toBe(true);
     await page.getByRole("button", { name: /^\d{2}:\d{2}$/ }).first().click();
     await page.getByRole("button", { name: "Continuar" }).click();
 
-    // Passo 4: Confirmar
+    // Passo 5: Confirmar
     await expect(page.getByRole("heading", { name: "Confirmar agendamento" })).toBeVisible();
     await expect(page.getByText("Pagar no Local")).toBeVisible();
     await page.getByRole("button", { name: "Confirmar agendamento" }).click();

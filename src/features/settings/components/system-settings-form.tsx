@@ -60,12 +60,12 @@ export function SystemSettingsForm({ initial }: { initial: Settings }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold">Regras do Sistema</h2>
           <p className="text-sm text-muted-foreground">Configure todas as regras de negócio da barbearia</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
             size="icon"

@@ -135,6 +135,27 @@ function computeAvailableSlots(
   return available;
 }
 
+/**
+ * Remove os horários que começam antes de `earliest` (agora + antecedência
+ * mínima, pro cliente). Sem isso o wizard oferecia horários de HOJE que já
+ * tinham passado — o cliente escolhia um, ia até o fim e só na confirmação
+ * recebia "É preciso agendar com pelo menos N minutos de antecedência".
+ * Mesmo critério de instante do combineDateAndTime (horário local do
+ * servidor, que roda no fuso do Brasil — ver TZ no Dockerfile).
+ */
+function dropSlotsBefore(slots: string[], dayIso: string, earliest: Date | undefined): string[] {
+  if (!earliest) return slots;
+  const [y, m, d] = dayIso.split("-").map(Number);
+  const dayEnd = new Date(y, m - 1, d, 23, 59, 59, 999);
+  if (dayEnd.getTime() < earliest.getTime()) return [];
+  const dayStart = new Date(y, m - 1, d, 0, 0, 0, 0);
+  if (dayStart.getTime() >= earliest.getTime()) return slots;
+  return slots.filter((time) => {
+    const [h, min] = time.split(":").map(Number);
+    return new Date(y, m - 1, d, h, min, 0, 0).getTime() >= earliest.getTime();
+  });
+}
+
 /** Slots livres de UM profissional num dia, já com os dados em mãos. */
 function computeSlotsForProfessional(
   data: AvailabilityData,
@@ -192,6 +213,8 @@ export async function getUnionAvailableSlots(params: {
   professionalIds: string[];
   date: Date;
   durationMinutes: number;
+  /** Se informado, descarta horários que começam antes deste instante. */
+  earliest?: Date;
 }): Promise<string[]> {
   const { professionalIds, date, durationMinutes } = params;
   if (professionalIds.length === 0) return [];
@@ -206,7 +229,7 @@ export async function getUnionAvailableSlots(params: {
       set.add(s);
     }
   }
-  return Array.from(set).sort();
+  return dropSlotsBefore(Array.from(set).sort(), dayIso, params.earliest);
 }
 
 /**
@@ -220,6 +243,8 @@ export async function getMonthAvailabilityLevels(params: {
   year: number;
   month: number; // 0-11
   durationMinutes: number;
+  /** Se informado, descarta horários que começam antes deste instante. */
+  earliest?: Date;
 }): Promise<Record<string, "MUITOS" | "POUCOS" | "NENHUM">> {
   const daysInMonth = new Date(params.year, params.month + 1, 0).getDate();
   const mm = String(params.month + 1).padStart(2, "0");
@@ -242,7 +267,8 @@ export async function getMonthAvailabilityLevels(params: {
       }
     }
 
-    result[iso] = slotSet.size === 0 ? "NENHUM" : slotSet.size <= 3 ? "POUCOS" : "MUITOS";
+    const open = dropSlotsBefore(Array.from(slotSet), iso, params.earliest).length;
+    result[iso] = open === 0 ? "NENHUM" : open <= 3 ? "POUCOS" : "MUITOS";
   }
 
   return result;

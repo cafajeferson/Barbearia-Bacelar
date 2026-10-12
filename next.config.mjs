@@ -1,5 +1,15 @@
+// Um identificador novo a cada `next build` — embutido no JS do navegador e
+// devolvido por /api/version; quando os dois divergem (houve deploy), o
+// VersionWatcher recarrega a página (ver src/shared/components/version-watcher.tsx).
+// Vem da variável BUILD_ID definida no Dockerfile (e não de um Date.now()
+// aqui): o Next carrega este arquivo em vários processos durante o build, e
+// cada um geraria um valor diferente. Sem a variável (ex.: `next dev`) fica
+// "dev", o que desliga a checagem.
+const BUILD_ID = process.env.BUILD_ID ?? "dev";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  env: { NEXT_PUBLIC_BUILD_ID: BUILD_ID },
   // Build standalone (server.js autocontido + só as deps de produção
   // realmente usadas) — é o formato que o Dockerfile de deploy (Fase 10)
   // espera; sem isso a imagem final levaria o node_modules inteiro.

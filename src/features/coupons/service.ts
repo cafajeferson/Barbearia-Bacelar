@@ -100,9 +100,27 @@ export async function generateRetentionCoupons(params: { ctx: AuthenticatedConte
       },
     });
 
+    // O código é único no banco, e dois clientes com o mesmo nome (ou o
+    // mesmo cliente recebendo um 2º cupom no mesmo dia, depois de usar o 1º)
+    // geravam o MESMO código — a violação de unicidade derrubava a transação
+    // inteira e ninguém recebia cupom naquele dia, todos os dias. Colisão
+    // agora ganha um sufixo (-2, -3...).
+    const today = ddmmaa(now);
+    const taken = new Set(
+      (
+        await tx.coupon.findMany({
+          where: { code: { startsWith: "RETORNO-", contains: `-${today}` } },
+          select: { code: true },
+        })
+      ).map((c) => c.code),
+    );
+
     const created: { clientId: string; code: string }[] = [];
     for (const client of inactiveClients) {
-      const code = `RETORNO-${slugifyName(client.name)}-${ddmmaa(now)}`;
+      const base = `RETORNO-${slugifyName(client.name)}-${today}`;
+      let code = base;
+      for (let n = 2; taken.has(code); n++) code = `${base}-${n}`;
+      taken.add(code);
       const coupon = await tx.coupon.create({
         data: {
           code,

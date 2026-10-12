@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getAuthContext } from "@/server/auth/getAuthContext";
+import { getAuthContext, type AuthenticatedContext } from "@/server/auth/getAuthContext";
+import { withAppContext } from "@/server/db/context";
+import { ttlCached } from "@/server/db/ttl-cache";
 import * as service from "./service";
 import { getAvailableSlots, getUnionAvailableSlots, getMonthAvailabilityLevels } from "./availability";
 import { transitionAppointmentStatus } from "./stateMachine";
@@ -12,6 +14,26 @@ async function requireAuth() {
   const ctx = await getAuthContext();
   if (!ctx) throw new Error("Não autenticado.");
   return ctx;
+}
+
+/**
+ * Primeiro instante que o CLIENTE pode agendar: agora + antecedência mínima
+ * das Regras do Sistema — a mesma regra que createAppointment aplica na
+ * confirmação, aplicada já na lista de horários. Admin/profissional não têm
+ * essa restrição (encaixe e walk-in são livres), então não filtra pra eles.
+ */
+async function earliestBookableInstant(ctx: AuthenticatedContext): Promise<Date | undefined> {
+  if (ctx.role !== "CLIENT") return undefined;
+  const minLead = await ttlCached("booking:min-lead-minutes", 60_000, () =>
+    withAppContext(ctx, async (tx) => {
+      const settings = await tx.systemSettings.findUniqueOrThrow({
+        where: { id: 1 },
+        select: { bookingMinLeadMinutes: true },
+      });
+      return settings.bookingMinLeadMinutes;
+    }),
+  );
+  return new Date(Date.now() + minLead * 60_000);
 }
 
 export async function createAppointmentAction(input: {
@@ -125,11 +147,12 @@ export async function getUnionAvailableSlotsAction(input: {
   date: string;
   durationMinutes: number;
 }) {
-  await requireAuth();
+  const ctx = await requireAuth();
   return getUnionAvailableSlots({
     professionalIds: input.professionalIds,
     date: new Date(input.date),
     durationMinutes: input.durationMinutes,
+    earliest: await earliestBookableInstant(ctx),
   });
 }
 
@@ -139,8 +162,8 @@ export async function getMonthAvailabilityAction(input: {
   month: number;
   durationMinutes: number;
 }) {
-  await requireAuth();
-  return getMonthAvailabilityLevels(input);
+  const ctx = await requireAuth();
+  return getMonthAvailabilityLevels({ ...input, earliest: await earliestBookableInstant(ctx) });
 }
 
 /** Valida o cupom assim que o cliente clica "Aplicar" — feedback na hora, em vez de só descobrir que é inválido/expirado ao confirmar o agendamento inteiro. */

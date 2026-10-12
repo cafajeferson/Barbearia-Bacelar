@@ -30,8 +30,8 @@ export default async function ClientesPage({
   });
 
   return (
-    <main className="space-y-4 p-6">
-      <div className="flex items-center justify-between">
+    <main className="space-y-4 p-3 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Clientes</h1>
           <p className="text-muted-foreground">{clients.length} cadastrados</p>
