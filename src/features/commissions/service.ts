@@ -13,6 +13,95 @@ function monthRange(periodMonth: Date) {
   return { start, end };
 }
 
+type CommissionSettings = {
+  defaultCommissionServicePct: unknown;
+  defaultCommissionWalkInPct: unknown;
+};
+type AppointmentForCommission = {
+  source: string;
+  totalPrice: unknown;
+  professional: { commissionServicePct: unknown; commissionWalkInPct: unknown };
+  services: { priceAtBooking: unknown; service: { commissionServicePct: unknown; commissionWalkInPct: unknown } }[];
+};
+
+/** Comissão de UM atendimento concluído — a mesma conta na apuração do mês e na hora em que o atendimento é concluído. */
+function computeServiceCommission(a: AppointmentForCommission, settings: CommissionSettings) {
+  const isWalkIn = a.source === "WALK_IN";
+  const professionalPct = isWalkIn ? a.professional.commissionWalkInPct : a.professional.commissionServicePct;
+  const defaultPct = isWalkIn ? settings.defaultCommissionWalkInPct : settings.defaultCommissionServicePct;
+  const fallbackPct = Number(professionalPct ?? defaultPct);
+
+  // Serviço pode sobrescrever o % — se o agendamento tem mais de um
+  // serviço com % diferentes entre si, pondera pelo preço de cada um
+  // (agendamento normal com 1 serviço, o caso de longe mais comum,
+  // isso vira só o % daquele serviço).
+  let weightedPct = 0;
+  let totalWeight = 0;
+  for (const as of a.services) {
+    const svcPct = isWalkIn ? as.service.commissionWalkInPct : as.service.commissionServicePct;
+    const effectivePct = Number(svcPct ?? fallbackPct);
+    const weight = Number(as.priceAtBooking);
+    weightedPct += effectivePct * weight;
+    totalWeight += weight;
+  }
+  const pct = totalWeight > 0 ? weightedPct / totalWeight : fallbackPct;
+  const base = Number(a.totalPrice);
+  const amount = (base * pct) / 100;
+  return {
+    type: (isWalkIn ? "WALK_IN" : "SERVICE") as CommissionType,
+    pct,
+    base,
+    amount,
+    formula: `${formatBRL(base)} × ${pct}%`,
+  };
+}
+
+/**
+ * Mantém a comissão de UM atendimento em dia, na hora: concluiu -> a linha
+ * aparece em Comissões e no Fechamento sem ninguém precisar clicar em
+ * "Recalcular"; deixou de estar concluído (excluído/cancelado) -> a linha
+ * pendente some. Linha já paga nunca é mexida aqui.
+ *
+ * Roda como sistema (ADMIN) porque o profissional que conclui o próprio
+ * atendimento não tem permissão de escrita em CommissionEntry. Comissão de
+ * assinatura não entra aqui: é um rateio do mês inteiro, feito na apuração.
+ */
+export async function syncAppointmentCommission(appointmentId: string) {
+  const SYSTEM = { role: "ADMIN" as const, userId: null };
+  return withAppContext(SYSTEM, async (tx) => {
+    const a = await tx.appointment.findUnique({
+      where: { id: appointmentId },
+      include: { professional: true, services: { include: { service: true } } },
+    });
+    if (!a) return;
+    const existing = await tx.commissionEntry.findMany({
+      where: { appointmentId, type: { in: ["SERVICE", "WALK_IN"] } },
+    });
+    if (existing.some((e) => e.status === "PAID")) return;
+    if (existing.length > 0) {
+      await tx.commissionEntry.deleteMany({ where: { id: { in: existing.map((e) => e.id) } } });
+    }
+    if (a.status !== "COMPLETED") return;
+
+    const settings = await tx.systemSettings.findUniqueOrThrow({ where: { id: 1 } });
+    const c = computeServiceCommission(a, settings);
+    // Mês do atendimento (coluna "somente data": componentes em UTC).
+    const periodMonth = new Date(a.scheduledDate.getUTCFullYear(), a.scheduledDate.getUTCMonth(), 1);
+    await tx.commissionEntry.create({
+      data: {
+        professionalId: a.professionalId,
+        type: c.type,
+        appointmentId: a.id,
+        periodMonth,
+        baseAmount: c.base,
+        pct: c.pct,
+        calculatedAmount: c.amount,
+        calculationFormula: c.formula,
+      },
+    });
+  });
+}
+
 /**
  * Apuração no 1º do mês seguinte: recalcula do zero (apaga e recria) as
  * comissões de Serviços e Assinaturas do mês informado. Idempotente por
@@ -23,6 +112,15 @@ export async function recalculateCommissions(params: { ctx: AuthenticatedContext
   const { start, end } = monthRange(params.periodMonth);
 
   return withAppContext(params.ctx, async (tx) => {
+    // Guarda o que já estava pago antes de apagar: o recálculo recria as
+    // linhas do zero e, sem isso, tudo voltava a "pendente".
+    const paidBefore = await tx.commissionEntry.findMany({
+      where: { periodMonth: start, status: "PAID" },
+      select: { professionalId: true, type: true, appointmentId: true, paidAt: true },
+    });
+    const alreadyPaid = new Map(
+      paidBefore.map((e) => [`${e.professionalId}|${e.type}|${e.appointmentId ?? ""}`, e.paidAt]),
+    );
     await tx.commissionEntry.deleteMany({ where: { periodMonth: start } });
     const settings = await tx.systemSettings.findUniqueOrThrow({ where: { id: 1 } });
 
@@ -32,37 +130,21 @@ export async function recalculateCommissions(params: { ctx: AuthenticatedContext
       include: { professional: true, services: { include: { service: true } } },
     });
     for (const a of appointments) {
-      const isWalkIn = a.source === "WALK_IN";
-      const professionalPct = isWalkIn ? a.professional.commissionWalkInPct : a.professional.commissionServicePct;
-      const defaultPct = isWalkIn ? settings.defaultCommissionWalkInPct : settings.defaultCommissionServicePct;
-      const fallbackPct = Number(professionalPct ?? defaultPct);
-
-      // Serviço pode sobrescrever o % — se o agendamento tem mais de um
-      // serviço com % diferentes entre si, pondera pelo preço de cada um
-      // (agendamento normal com 1 serviço, o caso de longe mais comum,
-      // isso vira só o % daquele serviço).
-      let weightedPct = 0;
-      let totalWeight = 0;
-      for (const as of a.services) {
-        const svcPct = isWalkIn ? as.service.commissionWalkInPct : as.service.commissionServicePct;
-        const effectivePct = Number(svcPct ?? fallbackPct);
-        const weight = Number(as.priceAtBooking);
-        weightedPct += effectivePct * weight;
-        totalWeight += weight;
-      }
-      const pct = totalWeight > 0 ? weightedPct / totalWeight : fallbackPct;
-      const base = Number(a.totalPrice);
-      const amount = (base * pct) / 100;
+      const c = computeServiceCommission(a, settings);
+      const key = `${a.professionalId}|${c.type}|${a.id}`;
+      const paidAt = alreadyPaid.get(key);
       await tx.commissionEntry.create({
         data: {
           professionalId: a.professionalId,
-          type: a.source === "WALK_IN" ? "WALK_IN" : "SERVICE",
+          type: c.type,
           appointmentId: a.id,
           periodMonth: start,
-          baseAmount: base,
-          pct,
-          calculatedAmount: amount,
-          calculationFormula: `${formatBRL(base)} × ${pct}%`,
+          baseAmount: c.base,
+          pct: c.pct,
+          calculatedAmount: c.amount,
+          calculationFormula: c.formula,
+          // Recalcular não desfaz o que já foi pago ao barbeiro.
+          ...(paidAt !== undefined ? { status: "PAID" as const, paidAt } : {}),
         },
       });
     }
@@ -101,6 +183,9 @@ export async function recalculateCommissions(params: { ctx: AuthenticatedContext
             pct: 0,
             calculatedAmount: amount,
             calculationFormula: `(${formatBRL(totalSubscriptionRevenue)} / 2) / ${totalAttendances} atend. × ${count} atend.`,
+            ...(alreadyPaid.has(`${professionalId}|SUBSCRIPTION|`)
+              ? { status: "PAID" as const, paidAt: alreadyPaid.get(`${professionalId}|SUBSCRIPTION|`) }
+              : {}),
           },
         });
       }

@@ -1,6 +1,7 @@
 import type { AppointmentStatus } from "@/generated/prisma/enums";
 import type { AuthenticatedContext } from "@/server/auth/getAuthContext";
 import { withAppContext } from "@/server/db/context";
+import { syncAppointmentCommission } from "@/features/commissions/service";
 
 /**
  * Grafo de transições legais (fluxo normal, sem override). Fora daqui,
@@ -59,7 +60,7 @@ export async function transitionAppointmentStatus(params: {
 }) {
   const { ctx, appointmentId, toStatus, overrideReason, extraData } = params;
 
-  return withAppContext(ctx, async (tx) => {
+  const result = await withAppContext(ctx, async (tx) => {
     const appointment = await tx.appointment.findUniqueOrThrow({
       where: { id: appointmentId },
     });
@@ -150,6 +151,19 @@ export async function transitionAppointmentStatus(params: {
       }
     }
 
-    return updated;
+    return { updated, wasCompleted: appointment.status === "COMPLETED" };
   });
+
+  // Comissão na hora: concluiu -> aparece; deixou de estar concluído -> sai.
+  // Chamada irmã (fora da transação acima, com contexto próprio de sistema);
+  // se falhar, a mudança de status já valeu e o "Recalcular" corrige depois.
+  if (toStatus === "COMPLETED" || result.wasCompleted) {
+    try {
+      await syncAppointmentCommission(appointmentId);
+    } catch (err) {
+      console.error("[commissions] falha ao atualizar a comissão do atendimento", appointmentId, err);
+    }
+  }
+
+  return result.updated;
 }
