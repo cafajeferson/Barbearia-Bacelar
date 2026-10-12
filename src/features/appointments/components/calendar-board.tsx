@@ -7,14 +7,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { initials, formatBRL } from "@/shared/lib/format";
 import { timeToMinutes, minutesToTime } from "@/shared/lib/time";
-import { rescheduleAppointmentAction, cancelAppointmentAction } from "../actions";
-import { AppointmentStatusActions } from "@/features/professionals/components/appointment-status-actions";
+import { rescheduleAppointmentAction } from "../actions";
+import { AppointmentDetailSheet } from "./appointment-detail-sheet";
 import { NewAppointmentDialog } from "./new-appointment-dialog";
 import type { getAgendaMestreData } from "../service";
-import type { AppointmentStatus } from "@/generated/prisma/enums";
 
 type RawAgendaData = Awaited<ReturnType<typeof getAgendaMestreData>>;
 type RawAppointment = RawAgendaData["appointments"][number];
@@ -24,6 +22,7 @@ type RawAppointment = RawAgendaData["appointments"][number];
 export type AgendaData = Omit<RawAgendaData, "appointments"> & {
   appointments: (Omit<RawAppointment, "totalPrice" | "products" | "couponRedemptions"> & {
     totalPrice: number;
+    serviceLines: { name: string; durationMinutes: number; price: number }[];
     products: (Omit<RawAppointment["products"][number], "priceAtBooking"> & { priceAtBooking: number })[];
     couponRedemptions: (Omit<RawAppointment["couponRedemptions"][number], "discountApplied" | "coupon"> & {
       discountApplied: number;
@@ -39,15 +38,6 @@ const DAY_END = 21 * 60;
 const PX_PER_MINUTE = 1.4;
 const SNAP_MINUTES = 5;
 const MIN_DURATION = 10;
-
-const STATUS_LABEL: Record<AppointmentStatus, string> = {
-  SCHEDULED: "Agendado",
-  CONFIRMED: "Confirmado",
-  IN_PROGRESS: "Em atendimento",
-  COMPLETED: "Concluído",
-  CANCELLED: "Cancelado",
-  NO_SHOW: "Não compareceu",
-};
 
 function minutesNow() {
   const now = new Date();
@@ -521,79 +511,14 @@ export function CalendarBoard({
         initialStartTime={createAt?.startTime}
       />
 
-      <Dialog open={!!selected} onOpenChange={(open) => !open && setSelectedId(null)}>
-        {selected && (
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{selected.client.name}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-3 text-sm">
-              <p className="text-muted-foreground">
-                {selected.services.map((s) => s.service.name).join(" + ")}
-              </p>
-              <p>
-                {selected.startTime}–{selected.endTime} · {formatBRL(selected.totalPrice)}
-              </p>
-              <div className="flex items-center gap-2">
-                <Badge variant={selected.status === "COMPLETED" ? "default" : "outline"}>
-                  {STATUS_LABEL[selected.status]}
-                </Badge>
-                {selected.forceOverlap && <Badge variant="destructive">Sobreposição forçada</Badge>}
-              </div>
-              {selected.products.length > 0 && (
-                <div className="rounded-md border border-primary/30 bg-primary/5 p-2">
-                  <p className="mb-1 text-xs font-medium text-primary">Produtos pedidos pelo cliente</p>
-                  <ul className="space-y-0.5">
-                    {selected.products.map((p) => (
-                      <li key={p.productId} className="flex items-center justify-between text-xs">
-                        <span>
-                          {p.quantity}× {p.product.name}
-                        </span>
-                        <span className="text-muted-foreground">{formatBRL(p.quantity * Number(p.priceAtBooking))}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-            <DialogFooter className="sm:justify-between">
-              <Button
-                variant="ghost"
-                className="text-destructive hover:text-destructive"
-                onClick={() => {
-                  // Concluído / falta: sai do fluxo normal, então o servidor
-                  // exige um motivo (fica no histórico do agendamento).
-                  const needsReason = selected.status === "COMPLETED" || selected.status === "NO_SHOW";
-                  let reason: string | undefined;
-                  if (needsReason) {
-                    const typed = window.prompt(
-                      "Este atendimento já foi fechado. Informe o motivo para excluí-lo da agenda:",
-                    );
-                    if (typed === null) return;
-                    if (!typed.trim()) {
-                      toast.error("Informe um motivo para excluir.");
-                      return;
-                    }
-                    reason = typed.trim();
-                  } else if (!window.confirm("Excluir este agendamento da agenda?")) {
-                    return;
-                  }
-                  cancelAppointmentAction({ appointmentId: selected.id, reason })
-                    .then(() => {
-                      toast.success("Agendamento excluído da agenda.");
-                      setSelectedId(null);
-                      router.refresh();
-                    })
-                    .catch((err) => toast.error(err instanceof Error ? err.message : "Erro ao excluir."));
-                }}
-              >
-                Excluir agendamento
-              </Button>
-              <AppointmentStatusActions appointmentId={selected.id} status={selected.status} />
-            </DialogFooter>
-          </DialogContent>
-        )}
-      </Dialog>
+      <AppointmentDetailSheet
+        appointment={selected ?? null}
+        professionalName={
+          selected ? (data.professionals.find((p) => p.id === selected.professionalId)?.name ?? "") : ""
+        }
+        dateISO={dateISO}
+        onClose={() => setSelectedId(null)}
+      />
 
       <Dialog open={!!pendingForce} onOpenChange={(open) => !open && (setPendingForce(null), setResizePreview(null))}>
         <DialogContent>

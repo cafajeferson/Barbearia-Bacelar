@@ -10,7 +10,9 @@ import { withAppContext } from "@/server/db/context";
  * que muda status de agendamento.
  */
 const LEGAL_TRANSITIONS: Record<AppointmentStatus, AppointmentStatus[]> = {
-  SCHEDULED: ["CONFIRMED", "CANCELLED", "NO_SHOW"],
+  // IN_PROGRESS direto: o cliente chegou e o barbeiro inicia o atendimento
+  // sem precisar passar pelo "Confirmar" antes.
+  SCHEDULED: ["CONFIRMED", "IN_PROGRESS", "CANCELLED", "NO_SHOW"],
   CONFIRMED: ["IN_PROGRESS", "CANCELLED", "NO_SHOW"],
   // CANCELLED: atendimento iniciado por engano (clicou em "Iniciar" no
   // agendamento errado) precisa poder ser desfeito sem virar falta do cliente.

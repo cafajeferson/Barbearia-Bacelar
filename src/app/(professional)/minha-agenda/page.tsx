@@ -137,6 +137,13 @@ async function DayView({
     appointments: appointments.map((a) => ({
       ...a,
       totalPrice: Number(a.totalPrice),
+      // Linhas de serviço já em number/string puros pro painel do agendamento
+      // (priceAtBooking é Decimal e não atravessa pra Client Component).
+      serviceLines: a.services.map((s) => ({
+        name: s.service.name,
+        durationMinutes: s.durationAtBooking,
+        price: Number(s.priceAtBooking),
+      })),
       products: a.products.map((p) => ({ ...p, priceAtBooking: Number(p.priceAtBooking) })),
       couponRedemptions: a.couponRedemptions.map((r) => ({
         ...r,
