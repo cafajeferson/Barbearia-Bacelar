@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { getAuthContext } from "@/server/auth/getAuthContext";
 import { getOwnDayData, getOwnWeekData } from "@/features/professionals/service";
 import { withAppContext } from "@/server/db/context";
+import { ttlCached } from "@/server/db/ttl-cache";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,7 +49,12 @@ export default async function MinhaAgendaPage({
   const nextDate = new Date(date);
   nextDate.setDate(nextDate.getDate() + (isWeek ? 7 : 1));
 
-  const unit = await withAppContext(ctx, (tx) => tx.unit.findFirstOrThrow());
+  // A unidade quase nunca muda, mas essa consulta rodava em série ANTES dos
+  // dados da agenda — uma transação inteira (~470ms até us-east-1) a cada
+  // troca de dia. Chave por profissional: a RLS decide qual unidade ele vê.
+  const unit = await ttlCached(`minha-agenda:unit:${ctx.userId}`, 60_000, () =>
+    withAppContext(ctx, (tx) => tx.unit.findFirstOrThrow()),
+  );
   const professionalOption = [{ id: ctx.userId, name: "Você", color: "#F5B301" }];
 
   const dateLabel = new Intl.DateTimeFormat("pt-BR", {

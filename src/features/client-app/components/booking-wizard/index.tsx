@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { WizardProgressBar } from "./progress-bar";
@@ -11,6 +11,7 @@ import { Step3Schedule } from "./step3-schedule";
 import { Step4Confirm } from "./step4-confirm";
 import type { WizardProduct, WizardProfessional, WizardService, WizardSubscription } from "./types";
 import { bookAppointmentAsClientAction } from "@/features/appointments/actions";
+import { prefetchMonthLevels } from "./availability-cache";
 
 export function BookingWizard({
   unitId,
@@ -55,6 +56,22 @@ export function BookingWizard({
     () => (professionalChoice === "ANY" ? professionals.map((p) => p.id) : professionalChoice ? [professionalChoice] : []),
     [professionalChoice, professionals],
   );
+
+  // Pré-busca da agenda: a tela de produtos (passo 3) vem antes da agenda
+  // (passo 4), e ao chegar nela o cliente já escolheu serviço e
+  // profissional — tudo que a consulta do mês precisa. Disparar aqui faz a
+  // agenda abrir com os dias já pintados em vez de esperar a request.
+  useEffect(() => {
+    if (step !== 3 || professionalIds.length === 0) return;
+    const base = selectedDate ?? new Date();
+    prefetchMonthLevels({
+      professionalIds,
+      year: base.getFullYear(),
+      month: base.getMonth(),
+      durationMinutes: totalDuration || 30,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, professionalIds.join(","), totalDuration, selectedDate?.getTime()]);
 
   function toggleService(id: string) {
     setSelectedServiceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));

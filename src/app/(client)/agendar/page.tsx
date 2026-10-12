@@ -1,5 +1,6 @@
 import { getAuthContext } from "@/server/auth/getAuthContext";
 import { withAppContext } from "@/server/db/context";
+import { ttlCached } from "@/server/db/ttl-cache";
 import { listCatalog } from "@/features/catalog/service";
 import { listActiveProfessionalsForBooking } from "@/features/professionals/service";
 import { getOwnSubscriptions } from "@/features/subscriptions/service";
@@ -15,12 +16,24 @@ export default async function AgendarPage({
   if (!ctx) return null;
   const { serviceId } = await searchParams;
 
-  const [sections, professionals, subscriptions, unit, settings, products] = await Promise.all([
+  // Unidade + janela de cancelamento numa transação só e com 60s de cache:
+  // eram duas transações próprias, o que levava esta página a 6 em paralelo
+  // contra um pool de 5 conexões — a sexta esperava uma das outras terminar
+  // e a tela de agendar custava o dobro do tempo de rede.
+  const [sections, professionals, subscriptions, { unit, cancellationWindowHours }, products] = await Promise.all([
     listCatalog({ ctx, onlyActive: true }),
     listActiveProfessionalsForBooking({ ctx }),
     getOwnSubscriptions({ ctx }),
-    withAppContext(ctx, (tx) => tx.unit.findFirstOrThrow()),
-    withAppContext(ctx, (tx) => tx.systemSettings.findUniqueOrThrow({ where: { id: 1 } })),
+    ttlCached("agendar:unit-settings", 60_000, () =>
+      withAppContext(ctx, async (tx) => {
+        const unit = await tx.unit.findFirstOrThrow({ select: { id: true, name: true } });
+        const settings = await tx.systemSettings.findUniqueOrThrow({
+          where: { id: 1 },
+          select: { cancellationWindowHours: true },
+        });
+        return { unit, cancellationWindowHours: settings.cancellationWindowHours };
+      }),
+    ),
     listProducts({ ctx }),
   ]);
 
@@ -48,7 +61,7 @@ export default async function AgendarPage({
         creditsUsedThisPeriod: s.creditsUsedThisPeriod,
         plan: { name: s.plan.name, creditLimitPerMonth: s.plan.creditLimitPerMonth },
       }))}
-      cancellationWindowHours={settings.cancellationWindowHours}
+      cancellationWindowHours={cancellationWindowHours}
       initialServiceId={serviceId}
     />
   );

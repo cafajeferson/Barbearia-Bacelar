@@ -49,3 +49,6 @@ next-env.d.ts
 /.windsurf
 /.agents
 skills-lock.json
+
+# credenciais do projeto Supabase novo (migração) — nunca commitar
+.env.novo

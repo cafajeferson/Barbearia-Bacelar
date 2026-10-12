@@ -6,10 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import {
-  getMonthAvailabilityAction,
-  getUnionAvailableSlotsAction,
-} from "@/features/appointments/actions";
+import { fetchDaySlots, fetchMonthLevels } from "./availability-cache";
 
 const LEVEL_COLOR: Record<string, string> = {
   MUITOS: "bg-success",
@@ -82,9 +79,17 @@ export function Step3Schedule({
   }
 
   useEffect(() => {
-    getMonthAvailabilityAction({ professionalIds, year: viewYear, month: viewMonth, durationMinutes }).then(
-      setLevels,
-    );
+    // Passa pelo cache do wizard: se a pré-busca (disparada na tela de
+    // produtos) já resolveu ou está em voo, as bolinhas aparecem na hora.
+    let cancelled = false;
+    fetchMonthLevels({ professionalIds, year: viewYear, month: viewMonth, durationMinutes })
+      .then((result) => {
+        if (!cancelled) setLevels(result);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [professionalIds.join(","), durationMinutes, viewYear, viewMonth]);
 
@@ -97,10 +102,11 @@ export function Step3Schedule({
     // (inclusive um dia sem nenhuma vaga real).
     let cancelled = false;
     setLoadingTimes(true);
-    getUnionAvailableSlotsAction({ professionalIds, date: isoDate(selectedDate), durationMinutes })
+    fetchDaySlots({ professionalIds, date: isoDate(selectedDate), durationMinutes })
       .then((result) => {
         if (!cancelled) setTimes(result);
       })
+      .catch(() => {})
       .finally(() => {
         if (!cancelled) setLoadingTimes(false);
       });

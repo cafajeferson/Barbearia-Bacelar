@@ -36,14 +36,28 @@ export async function GET(request: NextRequest) {
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-  if (error || !data.user) {
-    // Loga o motivo real — sem isso, uma falha aqui (ex.: code_verifier
-    // ausente/expirado) só aparecia pro usuário como "voltou pro login",
-    // sem pista nenhuma pra investigar.
-    console.error("[auth/callback] exchangeCodeForSession falhou:", error?.message ?? "sem data.user");
-    return NextResponse.redirect(`${origin}/login?error=oauth`);
+  let authUser = data.user;
+  if (error || !authUser) {
+    // O navegador às vezes pede este callback DUAS vezes com o mesmo code
+    // (visto no access log do nginx: Chrome no Android, duas requisições
+    // com 1s de diferença — típico de quem tem o PWA instalado, quando o
+    // link de volta do Google é reaberto dentro do app). O code é de uso
+    // único: a 1ª troca dá certo e a 2ª falha com "invalid flow state" —
+    // e era a resposta da 2ª que o usuário via ("erro no login com Google,
+    // só entra na segunda tentativa"), mesmo já estando logado pela 1ª.
+    // Se já existe sessão válida nos cookies, é esse caso: segue o fluxo
+    // normal em vez de devolver erro.
+    const { data: existing } = await supabase.auth.getUser();
+    authUser = existing.user;
+    if (!authUser) {
+      console.error("[auth/callback] exchangeCodeForSession falhou:", error?.message ?? "sem data.user");
+      // Passa pela raiz em vez de ir direto pro /login: se as duas
+      // requisições rodaram ao mesmo tempo, o cookie de sessão da 1ª pode
+      // chegar logo depois desta resposta — a raiz redireciona pra home do
+      // papel se houver sessão, e só mostra o erro se realmente não houver.
+      return NextResponse.redirect(`${origin}/?error=oauth`);
+    }
   }
-  const authUser = data.user;
 
   let appUser = await withAppContext(BOOTSTRAP, (tx) =>
     tx.user.findUnique({ where: { authUserId: authUser.id }, select: { id: true, role: true, active: true } }),
@@ -98,8 +112,21 @@ export async function GET(request: NextRequest) {
 
   // app_metadata.role é o que o middleware lê (edge-safe, sem Prisma) —
   // precisa estar certo mesmo pra quem acabou de ser criado agora.
-  const admin = createSupabaseAdminClient();
-  await admin.auth.admin.updateUserById(authUser.id, { app_metadata: { role: appUser.role } });
+  //
+  // O JWT que acabou de ir pro cookie foi emitido ANTES deste update, então
+  // no 1º login de alguém ele ainda não tem o papel: o middleware barrava a
+  // home e devolvia a pessoa pro /login, e só o 2º login (JWT novo, já com
+  // o papel) entrava. refreshSession() troca o cookie por um JWT atualizado
+  // ainda nesta resposta. Quem já tem o papel certo no JWT (todo login
+  // depois do primeiro) pula as duas chamadas ao Supabase Auth.
+  if (authUser.app_metadata?.role !== appUser.role) {
+    const admin = createSupabaseAdminClient();
+    await admin.auth.admin.updateUserById(authUser.id, { app_metadata: { role: appUser.role } });
+    const { error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError) {
+      console.error("[auth/callback] refreshSession falhou:", refreshError.message);
+    }
+  }
 
   return NextResponse.redirect(`${origin}${ROLE_HOME[appUser.role] ?? "/login"}`);
 }

@@ -14,13 +14,20 @@ function createClient() {
   // default do driver `pg` é max:10). Sem um teto explícito, um pico de
   // `withAppContext` concorrentes já causou "P2028 Unable to start a
   // transaction" — o app tentando abrir mais conexões do que o pooler
-  // aguenta em modo sessão. max baixo + idleTimeout curto mantém a
-  // pegada do processo pequena e libera conexão ociosa rápido.
+  // aguenta em modo sessão. O teto (max) é o que protege o pooler.
+  //
+  // idleTimeout LONGO de propósito: abrir uma conexão nova custa ~500ms
+  // medidos do VPS (TCP + TLS + auth, várias idas-e-voltas até us-east-1).
+  // Com os 10s de antes, num site de tráfego esparso praticamente todo
+  // clique encontrava o pool vazio e pagava esse meio segundo ANTES da
+  // primeira consulta. As 5 conexões ficam abertas entre um acesso e
+  // outro; keepAlive evita que morram em silêncio por ociosidade na rede.
   const adapter = new PrismaPg({
     connectionString: process.env.APP_DATABASE_URL,
     max: 5,
-    idleTimeoutMillis: 10_000,
+    idleTimeoutMillis: 10 * 60_000,
     connectionTimeoutMillis: 10_000,
+    keepAlive: true,
   });
   return new PrismaClient({ adapter });
 }
