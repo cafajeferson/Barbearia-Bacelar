@@ -4,6 +4,10 @@ Sistema de agendamento da Barbearia Bacelar: admin, profissional e cliente (PWA)
 
 Responder sempre em português (pt-BR). O dono do projeto não é barbeiro nem usa o sistema no dia a dia: explique o efeito para o usuário final, não só o código.
 
+## Melhorias próprias: não reverter
+
+O critério é "igual ao original" em **funções**, mas o que já melhoramos além do original fica como está — o cliente pediu essas melhorias. Ao igualar uma tela, **acrescentar** o que falta; nunca trocar nem remover algo nosso para ficar idêntico ao original. Em especial a **agenda** (Agenda Mestre e Minha Agenda): arrastar e redimensionar no estilo Booksy/Fresha, clicar no espaço vazio para criar, visão de mês, painel do agendamento, excluir atendimento em qualquer status, iniciar sem confirmar antes. Na dúvida se algo é melhoria nossa, perguntar antes de mexer.
+
 ## Stack
 
 - Next.js 14 (App Router) + TypeScript, Tailwind + shadcn/ui (`src/components/ui`).
