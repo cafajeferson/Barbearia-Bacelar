@@ -96,9 +96,9 @@ Legenda: ✅ temos · 🟡 temos em parte · ❌ falta
 | Item | Nosso |
 |---|---|
 | Lista agrupada por dia com Concluir / Não compareceu | ✅ |
-| Aba **Fechados pelo sistema** | ❌ |
-| **Encerrar até <mês>** em lote | ❌ |
-| Fechamento automático depois de N dias (selo "Fechado pelo sistema") | ❌ |
+| Aba **Fechados pelo sistema** | ✅ |
+| **Encerrar até <mês>** em lote | ✅ |
+| Fechamento automático depois de N dias (selo "Fechado pelo sistema") | ✅ (job diário 01:30) |
 
 ## Pendências
 
@@ -112,7 +112,7 @@ Legenda: ✅ temos · 🟡 temos em parte · ❌ falta
 |---|---|
 | **Unidades**: endereço, telefone, ativa/inativa | ✅ |
 | Unidades: **horário de funcionamento** | ❌ |
-| **Regras**: faltas (limite, contar últimos N meses, ação "só agenda falando com a barbearia"), antecedência mín./máx., **prazo para aprovar horário fixo**, **fechamento automático**, comissões padrão (agendado, sem hora marcada, produtos), tolerância de assinatura, **histórico de alterações** | 🟡 faltam os itens em negrito |
+| **Regras**: faltas (limite, contar últimos N meses, ação "só agenda falando com a barbearia"), antecedência mín./máx., **prazo para aprovar horário fixo**, fechamento automático ✅, comissões padrão (agendado, sem hora marcada, produtos), tolerância de assinatura, **histórico de alterações** | 🟡 faltam os itens em negrito |
 | **Identidade Visual**: logotipo (upload, modo inicial/imagem, cor de fundo), nome, nome curto, tagline | ❌ |
 | **Permissões**: contagem por perfil, lista de usuários com perfis (um usuário pode ser admin + profissional + cliente), gerenciar | ❌ |
 | **API Keys**: criar, rotacionar e revogar chaves da API pública | ❌ |
