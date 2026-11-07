@@ -110,6 +110,13 @@ async function simular(month: string) {
   const subOf = new Map<string, { id: string; planId: string }>();
   for (let i = 0; i < subscribers.length; i++) {
     const client = subscribers[i];
+    const existing = await withAppContext(SYSTEM, (tx) =>
+      tx.clientSubscription.findFirst({ where: { clientId: client.id, status: "ACTIVE" } }),
+    );
+    if (existing) {
+      subOf.set(client.id, { id: existing.id, planId: existing.planId });
+      continue;
+    }
     const plan = pick(base.plans);
     const payDay = 1 + (i % 5);
     // Vencimentos espalhados no começo do mês seguinte: alguns já vencidos.
@@ -143,6 +150,7 @@ async function simular(month: string) {
 
   let total = 0;
   const counts: Record<string, number> = {};
+  const now = new Date();
   for (let day = 1; day <= daysInMonth; day++) {
     const date = new Date(year, mon - 1, day);
     const weekday = date.getDay();
@@ -156,7 +164,8 @@ async function simular(month: string) {
           const services = chance(0.12) && rare.length ? [pick(rare)] : [pick(pool)];
           const duration = services.reduce((s, x) => s + x.durationMinutes, 0);
           if (cursor + duration > end) break;
-          if (chance(0.25)) {
+          const daysAhead = Math.max(0, (date.getTime() - now.getTime()) / 86_400_000);
+          if (chance(Math.min(0.8, 0.25 + daysAhead * 0.025))) {
             cursor += 15 * (1 + Math.floor(rnd() * 3)); // horário vago
             continue;
           }
@@ -178,26 +187,46 @@ async function simular(month: string) {
           } as Parameters<typeof createAppointment>[0]);
 
           // Resultado do atendimento.
-          const lastDays = day > daysInMonth - 2;
-          const r = rnd();
-          const status = lastDays && r < 0.08 ? "IN_PROGRESS" : r < 0.07 ? "NO_SHOW" : r < 0.13 ? "CANCELLED" : "COMPLETED";
-          const sub = subOf.get(client.id);
-          const paidWithPlan = status === "COMPLETED" && sub && source !== "WALK_IN" && chance(0.7);
           const at = new Date(year, mon - 1, day, Math.floor(cursor / 60), cursor % 60);
+          const isFuture = at.getTime() > now.getTime();
+          const hoursAgo = (now.getTime() - at.getTime()) / 3_600_000;
+          const r = rnd();
+          const status = isFuture
+            ? r < 0.04
+              ? "CANCELLED"
+              : r < 0.34
+                ? "CONFIRMED"
+                : "SCHEDULED"
+            : hoursAgo < 60 && r < 0.08
+              ? "IN_PROGRESS"
+              : r < 0.07
+                ? "NO_SHOW"
+                : r < 0.13
+                  ? "CANCELLED"
+                  : "COMPLETED";
+          const sub = subOf.get(client.id);
+          // Assinante agendando com o plano: o crédito é reservado já no agendamento.
+          const paidWithPlan =
+            (status === "COMPLETED" || status === "SCHEDULED" || status === "CONFIRMED") &&
+            sub &&
+            source !== "WALK_IN" &&
+            chance(0.7);
           await withAppContext(SYSTEM, async (tx) => {
             await tx.appointment.update({
               where: { id: appt.id },
               data: {
                 status,
-                createdAt: new Date(at.getTime() - 3 * 86_400_000),
-                ...(status === "CANCELLED" ? { cancelledAt: new Date(at.getTime() - 86_400_000), cancelledBy: base.admin.id } : {}),
+                createdAt: new Date(Math.min(at.getTime() - 3 * 86_400_000, now.getTime() - 3_600_000)),
+                ...(status === "CANCELLED"
+                  ? { cancelledAt: new Date(Math.min(at.getTime() - 86_400_000, now.getTime() - 3_600_000)), cancelledBy: base.admin.id }
+                  : {}),
                 ...(paidWithPlan ? { totalPrice: 0 } : {}),
               },
             });
-            {
+            if (status !== "SCHEDULED") {
               await tx.$executeRaw`
                 INSERT INTO "AppointmentStatusLog" (id, "appointmentId", "fromStatus", "toStatus", "changedBy", "isOverride", "reason", "createdAt")
-                VALUES (gen_random_uuid()::text, ${appt.id}::text, 'SCHEDULED'::"AppointmentStatus", ${status}::"AppointmentStatus", ${base.admin.id}::text, false, ${TAG}, ${at})
+                VALUES (gen_random_uuid()::text, ${appt.id}::text, 'SCHEDULED'::"AppointmentStatus", ${status}::"AppointmentStatus", ${base.admin.id}::text, false, ${TAG}, ${isFuture ? new Date(now.getTime() - 3_600_000) : at})
               `;
             }
             if (status === "NO_SHOW") {
@@ -225,12 +254,15 @@ async function simular(month: string) {
   // Apuração do mês (serviço + rateio de assinatura) e pagamento de parte.
   const result = await recalculateCommissions({ ctx: admin, periodMonth: monthStart });
   const firstPro = base.pros[0];
-  const paid = await withAppContext(SYSTEM, (tx) =>
-    tx.commissionEntry.updateMany({
-      where: { periodMonth: monthStart, professionalId: firstPro.id },
-      data: { status: "PAID", paidAt: new Date(year, mon, 5, 18) },
-    }),
-  );
+  const monthOver = new Date(year, mon, 1).getTime() <= now.getTime();
+  const paid = monthOver
+    ? await withAppContext(SYSTEM, (tx) =>
+        tx.commissionEntry.updateMany({
+          where: { periodMonth: monthStart, professionalId: firstPro.id },
+          data: { status: "PAID", paidAt: new Date(year, mon, 5, 18) },
+        }),
+      )
+    : { count: 0 };
   console.log(`\nsimulação de ${month}: ${total} agendamentos`, counts);
   console.log(`comissões apuradas: ${result.appointmentsProcessed} atendimentos, ${result.subscriptionAttendances} via plano`);
   console.log(`comissões de ${firstPro.name} marcadas como pagas: ${paid.count} lançamentos; demais profissionais ficam a pagar`);

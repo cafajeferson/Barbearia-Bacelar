@@ -81,4 +81,4 @@ O mesmo VPS hospeda outros sites; não mexer neles. Segredos ficam só em `.env`
 
 ## Contas de teste
 
-`scripts/seed-test-clients.ts` cria ou remove clientes numerados (`cliente1@bacelar.dev` ...) para teste manual; a senha é passada na linha de comando. Remover antes de a barbearia entrar em uso real.
+`scripts/seed-test-clients.ts` cria ou remove clientes numerados (`cliente1@bacelar.dev` ...) para teste manual; a senha é passada na linha de comando. Com `TEST_CLIENT_LOGIN=on` no ambiente, a tela de login aceita "cliente 7" + senha "123" (vira `cliente7@bacelar.dev` + senha com sufixo, ver `src/app/(auth)/login/actions.ts`); as contas são criadas com `seed-test-clients.ts 50 123-bacelar`. Remover as contas e **desligar a variável** antes de a barbearia entrar em uso real.

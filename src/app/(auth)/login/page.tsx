@@ -12,5 +12,5 @@ import { LoginPageClient } from "./login-form";
 export const dynamic = "force-dynamic";
 
 export default function LoginPage() {
-  return <LoginPageClient />;
+  return <LoginPageClient allowTestAlias={process.env.TEST_CLIENT_LOGIN === "on"} />;
 }

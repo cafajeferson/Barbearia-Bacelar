@@ -10,9 +10,29 @@ const ROLE_HOME: Record<string, string> = {
   CLIENT: "/inicio",
 };
 
+/**
+ * Login rápido para os clientes de TESTE (só com TEST_CLIENT_LOGIN=on no
+ * ambiente): "cliente 7" + "123" vira cliente7@bacelar.dev + a senha com o
+ * sufixo abaixo. O Supabase exige e-mail e senha de no mínimo 6
+ * caracteres, então a conta de verdade é criada por
+ * scripts/seed-test-clients.ts com senha "123" + TEST_PASSWORD_SUFFIX.
+ * Só alcança as contas cliente1..clienteN@bacelar.dev (papel CLIENT).
+ * DESLIGAR (tirar a variável) antes de a barbearia usar o sistema de verdade.
+ */
+const TEST_PASSWORD_SUFFIX = "-bacelar";
+
+function resolveTestAlias(identifier: string, password: string) {
+  if (process.env.TEST_CLIENT_LOGIN !== "on") return null;
+  const match = identifier.trim().toLowerCase().match(/^cliente\s*(\d{1,3})$/);
+  if (!match) return null;
+  return { email: `cliente${Number(match[1])}@bacelar.dev`, password: password + TEST_PASSWORD_SUFFIX };
+}
+
 export async function loginAction(formData: FormData): Promise<void> {
-  const email = String(formData.get("email") ?? "");
-  const password = String(formData.get("password") ?? "");
+  let email = String(formData.get("email") ?? "");
+  let password = String(formData.get("password") ?? "");
+  const alias = resolveTestAlias(email, password);
+  if (alias) ({ email, password } = alias);
 
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });

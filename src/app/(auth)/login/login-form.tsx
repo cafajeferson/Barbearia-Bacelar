@@ -38,15 +38,15 @@ function GoogleIcon() {
   );
 }
 
-export function LoginPageClient() {
+export function LoginPageClient({ allowTestAlias = false }: { allowTestAlias?: boolean }) {
   return (
     <Suspense>
-      <LoginForm />
+      <LoginForm allowTestAlias={allowTestAlias} />
     </Suspense>
   );
 }
 
-function LoginForm() {
+function LoginForm({ allowTestAlias }: { allowTestAlias: boolean }) {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
@@ -129,12 +129,13 @@ function LoginForm() {
         <form action={loginAction} className="space-y-5 sm:space-y-4">
           <div className="space-y-2">
             <label className="text-sm text-muted-foreground" htmlFor="email">
-              E-mail
+              {allowTestAlias ? "E-mail ou usuário de teste" : "E-mail"}
             </label>
             <input
               id="email"
               name="email"
-              type="email"
+              // Com o login de teste ligado aceita "cliente 7" (sem @).
+              type={allowTestAlias ? "text" : "email"}
               required
               autoComplete="email"
               inputMode="email"
