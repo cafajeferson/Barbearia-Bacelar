@@ -6,7 +6,7 @@ Responder sempre em português (pt-BR). O dono do projeto não é barbeiro nem u
 
 ## Melhorias próprias: não reverter
 
-O critério é "igual ao original" em **funções**, mas o que já melhoramos além do original fica como está — o cliente pediu essas melhorias. Ao igualar uma tela, **acrescentar** o que falta; nunca trocar nem remover algo nosso para ficar idêntico ao original. Em especial a **agenda** (Agenda Mestre e Minha Agenda): arrastar e redimensionar no estilo Booksy/Fresha, clicar no espaço vazio para criar, visão de mês, painel do agendamento, excluir atendimento em qualquer status, iniciar sem confirmar antes. Na dúvida se algo é melhoria nossa, perguntar antes de mexer.
+O critério é "igual ao original" em **funções**, mas o que já melhoramos além do original fica como está — o cliente pediu essas melhorias. Ao igualar uma tela, **acrescentar** o que falta; nunca trocar nem remover algo nosso para ficar idêntico ao original. Em especial a **agenda** (Agenda Mestre e Minha Agenda): arrastar e redimensionar no estilo Booksy/Fresha, clicar no espaço vazio para criar, visão de mês, painel do agendamento, excluir atendimento em qualquer status, iniciar sem confirmar antes. Também fica o **passo "Produtos" no agendamento do cliente** ("Vai precisar de algum produto?", entre Profissional e Horário), que o original não tem, e **arrastar o agendamento para cima/para baixo na agenda para mudar o horário** — uma das primeiras melhorias pedidas pelo cliente. Na dúvida se algo é melhoria nossa, perguntar antes de mexer.
 
 ## Stack
 
