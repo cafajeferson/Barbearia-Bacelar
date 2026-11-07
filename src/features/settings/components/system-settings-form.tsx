@@ -17,7 +17,7 @@ import type { NoShowAction } from "@/generated/prisma/enums";
 const NO_SHOW_ACTION_LABEL: Record<NoShowAction, string> = {
   NONE: "Nenhuma ação",
   REQUIRE_PREPAYMENT: "Exigir pagamento antecipado",
-  BLOCK_ONLINE_BOOKING: "Bloquear agendamento online",
+  BLOCK_ONLINE_BOOKING: "Só agenda falando com a barbearia",
 };
 
 type Settings = {
