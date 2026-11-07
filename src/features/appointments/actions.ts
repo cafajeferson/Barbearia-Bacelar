@@ -8,6 +8,7 @@ import * as service from "./service";
 import { getAvailableSlots, getUnionAvailableSlots, getMonthAvailabilityLevels } from "./availability";
 import { transitionAppointmentStatus } from "./stateMachine";
 import { bookAppointmentAsClient, validateCoupon } from "./booking";
+import { closeOpenUntilPreviousMonth } from "./autoClose";
 import type { AppointmentSource, AppointmentStatus } from "@/generated/prisma/enums";
 
 async function requireAuth() {
@@ -198,4 +199,14 @@ export async function bookAppointmentAsClientAction(input: {
   revalidatePath("/agenda");
   revalidatePath("/minha-agenda");
   return appointment;
+}
+
+/** Em aberto → "Encerrar até <mês>". */
+export async function closeOpenUntilPreviousMonthAction() {
+  const ctx = await requireAuth();
+  const closed = await closeOpenUntilPreviousMonth({ ctx });
+  revalidatePath("/em-aberto");
+  revalidatePath("/agenda");
+  revalidatePath("/fechamento");
+  return { closed };
 }

@@ -53,6 +53,8 @@ export default async function ConfiguracoesPage() {
           defaultCommissionWalkInPct: Number(settings.defaultCommissionWalkInPct),
           defaultCommissionProductPct: Number(settings.defaultCommissionProductPct),
           subscriptionGraceDays: settings.subscriptionGraceDays,
+          autoCloseEnabled: settings.autoCloseEnabled,
+          autoCloseAfterDays: settings.autoCloseAfterDays,
         }}
       />
 

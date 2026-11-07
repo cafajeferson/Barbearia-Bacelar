@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { RotateCcw, RotateCw, Save } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -28,6 +29,8 @@ type Settings = {
   defaultCommissionWalkInPct: number;
   defaultCommissionProductPct: number;
   subscriptionGraceDays: number;
+  autoCloseEnabled: boolean;
+  autoCloseAfterDays: number;
 };
 
 export function SystemSettingsForm({ initial }: { initial: Settings }) {
@@ -192,6 +195,37 @@ export function SystemSettingsForm({ initial }: { initial: Settings }) {
               value={values.defaultCommissionProductPct}
               onChange={(e) => set("defaultCommissionProductPct", Number(e.target.value))}
             />
+          </div>
+        </Card>
+
+        <Card className="space-y-4 p-4">
+          <div>
+            <h3 className="font-semibold">Fechamento dos Atendimentos</h3>
+            <p className="text-sm text-muted-foreground">Conclusão automática do atendimento que ficou aberto</p>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor="autoCloseEnabled">Fechamento automático</Label>
+            <Switch
+              id="autoCloseEnabled"
+              checked={values.autoCloseEnabled}
+              onCheckedChange={(v) => set("autoCloseEnabled", v)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="autoCloseAfterDays">Concluir depois de (dias)</Label>
+            <Input
+              id="autoCloseAfterDays"
+              type="number"
+              min={1}
+              disabled={!values.autoCloseEnabled}
+              value={values.autoCloseAfterDays}
+              onChange={(e) => set("autoCloseAfterDays", Number(e.target.value))}
+            />
+            <p className="text-xs text-muted-foreground">
+              {values.autoCloseEnabled
+                ? `Ligado: o atendimento que ninguém concluiu nem marcou como falta é concluído sozinho ${values.autoCloseAfterDays || 0} dia(s) depois, com o selo "Fechado pelo sistema".`
+                : "Desligado: atendimentos sem conclusão ficam na tela Em aberto até alguém resolver."}
+            </p>
           </div>
         </Card>
 

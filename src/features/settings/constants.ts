@@ -10,4 +10,6 @@ export const SYSTEM_SETTINGS_DEFAULTS = {
   defaultCommissionWalkInPct: 30,
   defaultCommissionProductPct: 10,
   subscriptionGraceDays: 5,
+  autoCloseEnabled: true,
+  autoCloseAfterDays: 3,
 };

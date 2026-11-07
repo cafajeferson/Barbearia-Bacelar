@@ -20,6 +20,8 @@ export async function updateSystemSettings(params: {
   defaultCommissionWalkInPct: number;
   defaultCommissionProductPct: number;
   subscriptionGraceDays: number;
+  autoCloseEnabled: boolean;
+  autoCloseAfterDays: number;
 }) {
   requireAdmin(params.ctx);
   const { ctx, ...data } = params;

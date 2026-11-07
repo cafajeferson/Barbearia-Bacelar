@@ -318,6 +318,8 @@ model Appointment {
   cancelledAt           DateTime?
   cancelledBy           String?
   cancellationFeeApplied Boolean            @default(false)
+  /// Concluído automaticamente (fechamento automático ou "Encerrar até <mês>").
+  closedBySystem        Boolean             @default(false)
   createdBy             String
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
@@ -602,6 +604,8 @@ model SystemSettings {
   retentionCouponDaysInactive Int        @default(30)
   reminderHoursBefore       Int          @default(24)
   recurringGenerationWindowDays Int      @default(60)
+  autoCloseEnabled          Boolean      @default(true)
+  autoCloseAfterDays        Int          @default(3)
   brandName                 String       @default("Barbearia Bacelar")
   brandShortName            String       @default("Bacelar")
   brandTagline              String?

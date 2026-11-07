@@ -25,6 +25,8 @@ export async function updateSystemSettingsAction(input: {
   defaultCommissionWalkInPct: number;
   defaultCommissionProductPct: number;
   subscriptionGraceDays: number;
+  autoCloseEnabled: boolean;
+  autoCloseAfterDays: number;
 }) {
   const ctx = await requireAuth();
   const result = await service.updateSystemSettings({ ctx, ...input });

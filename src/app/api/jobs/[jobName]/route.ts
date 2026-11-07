@@ -23,6 +23,7 @@ const JOB_MAP: Record<string, () => Promise<unknown>> = {
   "reminder-scheduler": jobs.sendUpcomingReminders,
   "retention-coupon-generator": jobs.runRetentionCouponGeneration,
   "commission-apuracao": jobs.runCommissionApuracao,
+  "auto-close-sweep": jobs.sweepAutoClose,
 };
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ jobName: string }> }) {
