@@ -16,14 +16,18 @@ const ROLE_HOME: Record<string, string> = {
  * sufixo abaixo. O Supabase exige e-mail e senha de no mínimo 6
  * caracteres, então a conta de verdade é criada por
  * scripts/seed-test-clients.ts com senha "123" + TEST_PASSWORD_SUFFIX.
- * Só alcança as contas cliente1..clienteN@bacelar.dev (papel CLIENT).
+ * Só alcança as contas de teste: cliente1..clienteN@bacelar.dev (CLIENT) e,
+ * com "admin", admin@bacelar.dev (ADMIN).
  * DESLIGAR (tirar a variável) antes de a barbearia usar o sistema de verdade.
  */
 const TEST_PASSWORD_SUFFIX = "-bacelar";
 
 function resolveTestAlias(identifier: string, password: string) {
   if (process.env.TEST_CLIENT_LOGIN !== "on") return null;
-  const match = identifier.trim().toLowerCase().match(/^cliente\s*(\d{1,3})$/);
+  const id = identifier.trim().toLowerCase();
+  // "admin" -> conta de teste do administrador (admin@bacelar.dev).
+  if (id === "admin") return { email: "admin@bacelar.dev", password: password + TEST_PASSWORD_SUFFIX };
+  const match = id.match(/^cliente\s*(\d{1,3})$/);
   if (!match) return null;
   return { email: `cliente${Number(match[1])}@bacelar.dev`, password: password + TEST_PASSWORD_SUFFIX };
 }
