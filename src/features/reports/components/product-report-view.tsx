@@ -1,37 +1,12 @@
 import Link from "next/link";
-import { ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight, DollarSign, Package, Search, ShoppingBag, Users, X } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, DollarSign, Package, Search, ShoppingBag, Users, X } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { formatBRL } from "@/shared/lib/format";
 import type { ReportPeriod } from "../service";
 import type { ProductReport } from "../product-report";
 import { AreaChart, DonutChart, VerticalBars } from "./charts";
-
-const PERIODS: { value: ReportPeriod; label: string }[] = [
-  { value: "dia", label: "Dia" },
-  { value: "semana", label: "Semana" },
-  { value: "mes", label: "Mês" },
-];
-
-function shift(dateISO: string, period: ReportPeriod, direction: 1 | -1) {
-  const [y, m, d] = dateISO.split("-").map(Number);
-  const next =
-    period === "dia"
-      ? new Date(Date.UTC(y, m - 1, d + direction))
-      : period === "semana"
-        ? new Date(Date.UTC(y, m - 1, d + 7 * direction))
-        : new Date(Date.UTC(y, m - 1 + direction, 1));
-  return next.toISOString().slice(0, 10);
-}
-
-function title(r: ProductReport) {
-  const s = new Date(`${r.start}T00:00:00Z`);
-  const e = new Date(`${r.endInclusive}T00:00:00Z`);
-  const f = (o: Intl.DateTimeFormatOptions, d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", ...o }).format(d);
-  if (r.period === "dia") return f({ weekday: "long", day: "numeric", month: "long", year: "numeric" }, s);
-  if (r.period === "mes") return f({ month: "long", year: "numeric" }, s);
-  return `${f({ day: "2-digit", month: "2-digit" }, s)} a ${f({ day: "2-digit", month: "2-digit", year: "numeric" }, e)}`;
-}
+import { PeriodControls } from "./period-controls";
 
 function Panel({ title, sub, className, children }: { title: string; sub?: string; className?: string; children: React.ReactNode }) {
   return (
@@ -81,10 +56,15 @@ export function ProductReportView({
   dateISO: string;
   showProfessionalFilter: boolean;
 }) {
-  const href = (over: { periodo?: ReportPeriod; data?: string; prof?: string | null; q?: string | null }) => {
+  const href = (over: { periodo?: ReportPeriod; data?: string; de?: string; ate?: string; prof?: string | null; q?: string | null }) => {
     const p = new URLSearchParams({ aba: "produtos" });
-    p.set("periodo", over.periodo ?? report.period);
+    const periodo = over.periodo ?? report.period;
+    p.set("periodo", periodo);
     p.set("data", over.data ?? dateISO);
+    if (periodo === "personalizado") {
+      p.set("de", over.de ?? report.start);
+      p.set("ate", over.ate ?? report.endInclusive);
+    }
     const prof = over.prof === undefined ? report.professionalId : over.prof;
     if (showProfessionalFilter && prof) p.set("prof", prof);
     const q = over.q === undefined ? report.query : over.q;
@@ -93,8 +73,6 @@ export function ProductReportView({
   };
   const chip = (active: boolean) =>
     cn("whitespace-nowrap rounded-full border px-3 py-1 text-sm", active ? "border-primary bg-primary text-primary-foreground" : "border-border/60 text-muted-foreground hover:bg-accent");
-  const now = new Date();
-  const todayISO = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const top = report.products.slice(0, 5);
   const rest = report.products.slice(5).reduce((s, p) => s + p.units, 0);
   const maxUnits = report.products[0]?.units ?? 1;
@@ -102,31 +80,25 @@ export function ProductReportView({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex gap-1 rounded-full border border-border/60 bg-card p-1">
-            {PERIODS.map((p) => (
-              <Link key={p.value} href={href({ periodo: p.value })} prefetch={false} className={cn("rounded-full px-4 py-1.5 text-sm font-medium", report.period === p.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent")}>
-                {p.label}
-              </Link>
-            ))}
-          </div>
-          <div className="flex items-center gap-1">
-            <Link href={href({ data: shift(dateISO, report.period, -1) })} prefetch={false} className="rounded-full border border-border/60 p-2 hover:bg-accent" aria-label="Período anterior">
-              <ChevronLeft className="h-4 w-4" />
-            </Link>
-            <span className="px-2 text-sm font-medium first-letter:uppercase">{title(report)}</span>
-            <Link href={href({ data: shift(dateISO, report.period, 1) })} prefetch={false} className="rounded-full border border-border/60 p-2 hover:bg-accent" aria-label="Próximo período">
-              <ChevronRight className="h-4 w-4" />
-            </Link>
-            <Link href={href({ data: todayISO })} prefetch={false} className="ml-1 rounded-full border border-border/60 px-3 py-1.5 text-sm hover:bg-accent">
-              Hoje
-            </Link>
-          </div>
-        </div>
+        <PeriodControls
+          period={report.period}
+          dateISO={dateISO}
+          startISO={report.start}
+          endISO={report.endInclusive}
+          href={href}
+          basePath={basePath}
+          hidden={{ aba: "produtos", prof: showProfessionalFilter ? report.professionalId : null, q: report.query || null }}
+        />
         <form action={basePath} className="flex w-full items-center gap-2 sm:w-auto">
           <input type="hidden" name="aba" value="produtos" />
           <input type="hidden" name="periodo" value={report.period} />
           <input type="hidden" name="data" value={dateISO} />
+          {report.period === "personalizado" && (
+            <>
+              <input type="hidden" name="de" value={report.start} />
+              <input type="hidden" name="ate" value={report.endInclusive} />
+            </>
+          )}
           {showProfessionalFilter && report.professionalId && <input type="hidden" name="prof" value={report.professionalId} />}
           <label className="relative flex-1 sm:w-64">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -174,7 +146,7 @@ export function ProductReportView({
         </Panel>
         <Panel title="Mais vendidos" sub="participação em unidades">
           {top.length ? (
-            <DonutChart slices={[...top.map((p) => ({ label: p.name, value: p.units })), ...(rest ? [{ label: "Outros", value: rest }] : [])]} centerLabel={String(report.kpis.units)} centerSub="unidades" />
+            <DonutChart slices={[...top.map((p) => ({ label: p.name, value: p.units })), ...(rest ? [{ label: "Outros", value: rest }] : [])]} centerLabel={String(report.kpis.units)} centerSub="unidades" hrefFor={(label) => (label === "Outros" ? null : href({ q: label }))} />
           ) : (
             <p className="py-10 text-center text-sm text-muted-foreground">Nenhuma venda no período</p>
           )}

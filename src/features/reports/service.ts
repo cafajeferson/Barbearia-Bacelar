@@ -1,7 +1,10 @@
 import type { AuthenticatedContext } from "@/server/auth/getAuthContext";
 import { withAppContext } from "@/server/db/context";
 
-export type ReportPeriod = "dia" | "semana" | "mes";
+export type ReportPeriod = "dia" | "semana" | "mes" | "personalizado";
+
+/** Intervalo livre ("de tal data a tal data"), datas inclusivas em UTC. */
+export type CustomRange = { from: Date; to: Date };
 
 /**
  * Quebra o nome do serviço do catálogo nos serviços que ele contém:
@@ -24,7 +27,7 @@ function utcDay(y: number, m: number, d: number) {
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 /** Início (inclusive) e fim (exclusive) do período que contém `ref`. Semana começa na segunda. */
-export function periodRange(period: ReportPeriod, ref: Date) {
+export function periodRange(period: Exclude<ReportPeriod, "personalizado">, ref: Date) {
   const y = ref.getUTCFullYear();
   const m = ref.getUTCMonth();
   const d = ref.getUTCDate();
@@ -36,12 +39,34 @@ export function periodRange(period: ReportPeriod, ref: Date) {
   return { start: utcDay(y, m, 1), end: utcDay(y, m + 1, 1) };
 }
 
+/**
+ * Intervalo do relatório e o período anterior de mesmo tamanho (para a
+ * variação % dos cards). No personalizado, o anterior é o mesmo número de
+ * dias imediatamente antes do início.
+ */
+export function resolveRange(period: ReportPeriod, ref: Date, custom?: CustomRange) {
+  if (period === "personalizado" && custom) {
+    const start = custom.from;
+    const end = new Date(custom.to.getTime() + 86_400_000);
+    const len = end.getTime() - start.getTime();
+    return { start, end, prev: { start: new Date(start.getTime() - len), end: start } };
+  }
+  const p = period === "personalizado" ? "mes" : period;
+  const { start, end } = periodRange(p, ref);
+  const prevRef =
+    p === "mes"
+      ? utcDay(start.getUTCFullYear(), start.getUTCMonth() - 1, 1)
+      : new Date(start.getTime() - (p === "semana" ? 7 : 1) * 86_400_000);
+  return { start, end, prev: periodRange(p, prevRef) };
+}
+
 /** Colunas da evolução dentro do período: mês -> semanas; semana -> dias; dia -> o próprio dia. */
 function buckets(period: ReportPeriod, start: Date, end: Date) {
   const out: { key: string; label: string; start: Date; end: Date }[] = [];
   const weekday = new Intl.DateTimeFormat("pt-BR", { weekday: "short", timeZone: "UTC" });
   const dm = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
-  if (period === "mes") {
+  const days = Math.round((end.getTime() - start.getTime()) / 86_400_000);
+  if (period === "mes" || (period === "personalizado" && days > 14)) {
     let cursor = start;
     let n = 1;
     while (cursor < end) {
@@ -78,18 +103,16 @@ export async function getServiceReport(params: {
   professionalId?: string;
   /** Busca individual: nome do cliente ou serviço (sem diferenciar acento/maiúscula). */
   q?: string;
+  /** Intervalo livre quando period = "personalizado". */
+  custom?: CustomRange;
 }) {
-  const { ctx, period, ref } = params;
+  const { ctx, period } = params;
   if (ctx.role === "CLIENT") throw new Error("Relatórios são só para a equipe.");
   const professionalId = ctx.role === "PROFESSIONAL" ? (ctx.userId ?? "-") : params.professionalId;
 
-  const { start, end } = periodRange(period, ref);
-  // Período anterior do mesmo tamanho, para a variação % dos cards.
-  const prevRef =
-    period === "mes"
-      ? utcDay(start.getUTCFullYear(), start.getUTCMonth() - 1, 1)
-      : new Date(start.getTime() - (period === "semana" ? 7 : 1) * 86_400_000);
-  const prev = periodRange(period, prevRef);
+  const { start, end, prev } = resolveRange(period, params.ref, params.custom);
+  // Referência da tendência mês a mês: o último dia do intervalo.
+  const ref = period === "personalizado" ? new Date(end.getTime() - 86_400_000) : params.ref;
   // Tendência mês a mês: os 6 meses até o mês de referência.
   const trendStart = utcDay(ref.getUTCFullYear(), ref.getUTCMonth() - 5, 1);
   const trendEnd = utcDay(ref.getUTCFullYear(), ref.getUTCMonth() + 1, 1);
@@ -144,6 +167,17 @@ export async function getServiceReport(params: {
       : splitServiceName(sv.service.name);
 
   const inPeriod = filtered.filter((a) => a.scheduledDate >= start && a.scheduledDate < end);
+
+  // Atalhos de um clique: os serviços mais feitos no período, sem a busca.
+  const quickCount = new Map<string, number>();
+  for (const a of appointments) {
+    if (a.scheduledDate < start || a.scheduledDate >= end) continue;
+    for (const sv of a.services) for (const it of splitServiceName(sv.service.name)) quickCount.set(it, (quickCount.get(it) ?? 0) + 1);
+  }
+  const quickItems = Array.from(quickCount.entries())
+    .sort((x, y) => y[1] - x[1])
+    .slice(0, 12)
+    .map(([it]) => it);
   const cols = buckets(period, start, end);
 
   type Row = { item: string; total: number; byBucket: Record<string, number>; byProfessional: Record<string, number> };
@@ -198,9 +232,10 @@ export async function getServiceReport(params: {
   } else {
     const dm = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", timeZone: "UTC" });
     const wd = new Intl.DateTimeFormat("pt-BR", { weekday: "short", timeZone: "UTC" });
+    const dmShort = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
     for (let t = start.getTime(); t < end.getTime(); t += 86_400_000) {
       const d = new Date(t);
-      series.push({ label: period === "semana" ? wd.format(d).replace(".", "") : dm.format(d), services: 0, revenue: 0 });
+      series.push({ label: period === "semana" ? wd.format(d).replace(".", "") : period === "personalizado" ? dmShort.format(d) : dm.format(d), services: 0, revenue: 0 });
     }
   }
   const weekdays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((label) => ({ label, services: 0 }));
@@ -275,6 +310,7 @@ export async function getServiceReport(params: {
       ),
     },
     series,
+    quickItems,
     query: params.q?.trim() ?? "",
     attendances,
     clientsByItem: Object.fromEntries(

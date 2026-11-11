@@ -3,8 +3,6 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   CalendarCheck,
-  ChevronLeft,
-  ChevronRight,
   DollarSign,
   Receipt,
   Scissors,
@@ -16,34 +14,9 @@ import { cn } from "@/lib/utils";
 import { formatBRL } from "@/shared/lib/format";
 import type { ReportPeriod, ServiceReport } from "../service";
 import { AreaChart, DonutChart, VerticalBars } from "./charts";
+import { PeriodControls } from "./period-controls";
 
-const PERIODS: { value: ReportPeriod; label: string }[] = [
-  { value: "dia", label: "Dia" },
-  { value: "semana", label: "Semana" },
-  { value: "mes", label: "Mês" },
-];
 const ATTENDANCE_LIMIT = 60;
-
-function shift(dateISO: string, period: ReportPeriod, direction: 1 | -1) {
-  const [y, m, d] = dateISO.split("-").map(Number);
-  const next =
-    period === "dia"
-      ? new Date(Date.UTC(y, m - 1, d + direction))
-      : period === "semana"
-        ? new Date(Date.UTC(y, m - 1, d + 7 * direction))
-        : new Date(Date.UTC(y, m - 1 + direction, 1));
-  return next.toISOString().slice(0, 10);
-}
-
-function periodTitle(report: ServiceReport) {
-  const start = new Date(`${report.start}T00:00:00Z`);
-  const end = new Date(`${report.endInclusive}T00:00:00Z`);
-  const fmt = (o: Intl.DateTimeFormatOptions, d: Date) =>
-    new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", ...o }).format(d);
-  if (report.period === "dia") return fmt({ weekday: "long", day: "numeric", month: "long", year: "numeric" }, start);
-  if (report.period === "mes") return fmt({ month: "long", year: "numeric" }, start);
-  return `${fmt({ day: "2-digit", month: "2-digit" }, start)} a ${fmt({ day: "2-digit", month: "2-digit", year: "numeric" }, end)}`;
-}
 
 function Panel({ title, sub, className, children }: { title: string; sub?: string; className?: string; children: React.ReactNode }) {
   return (
@@ -119,10 +92,15 @@ export function ServiceReportView({
   /** Abas de Relatórios (Serviços / Clientes / Produtos), mostradas logo abaixo do título. */
   tabs?: React.ReactNode;
 }) {
-  const href = (over: { periodo?: ReportPeriod; data?: string; prof?: string | null; q?: string | null }) => {
+  const href = (over: { periodo?: ReportPeriod; data?: string; de?: string; ate?: string; prof?: string | null; q?: string | null }) => {
     const p = new URLSearchParams();
-    p.set("periodo", over.periodo ?? report.period);
+    const periodo = over.periodo ?? report.period;
+    p.set("periodo", periodo);
     p.set("data", over.data ?? dateISO);
+    if (periodo === "personalizado") {
+      p.set("de", over.de ?? report.start);
+      p.set("ate", over.ate ?? report.endInclusive);
+    }
     const prof = over.prof === undefined ? report.professionalId : over.prof;
     if (showProfessionalFilter && prof) p.set("prof", prof);
     const q = over.q === undefined ? report.query : over.q;
@@ -134,8 +112,6 @@ export function ServiceReportView({
       "whitespace-nowrap rounded-full border px-3 py-1 text-sm transition-colors",
       active ? "border-primary bg-primary text-primary-foreground" : "border-border/60 text-muted-foreground hover:bg-accent",
     );
-  const today = new Date();
-  const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   const showByPro = showProfessionalFilter && !report.professionalId && report.professionals.length > 1;
   const top = report.items.slice(0, 5);
   const others = report.items.slice(5).reduce((s, r) => s + r.total, 0);
@@ -159,6 +135,12 @@ export function ServiceReportView({
         <form action={basePath} className="flex w-full items-center gap-2 sm:w-auto">
           <input type="hidden" name="periodo" value={report.period} />
           <input type="hidden" name="data" value={dateISO} />
+          {report.period === "personalizado" && (
+            <>
+              <input type="hidden" name="de" value={report.start} />
+              <input type="hidden" name="ate" value={report.endInclusive} />
+            </>
+          )}
           {showProfessionalFilter && report.professionalId && <input type="hidden" name="prof" value={report.professionalId} />}
           <label className="relative flex-1 sm:w-72">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -177,35 +159,15 @@ export function ServiceReportView({
 
       {tabs}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex gap-1 rounded-full border border-border/60 bg-card p-1">
-          {PERIODS.map((p) => (
-            <Link
-              key={p.value}
-              href={href({ periodo: p.value })}
-              prefetch={false}
-              className={cn(
-                "rounded-full px-4 py-1.5 text-sm font-medium",
-                report.period === p.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent",
-              )}
-            >
-              {p.label}
-            </Link>
-          ))}
-        </div>
-        <div className="flex items-center gap-1">
-          <Link href={href({ data: shift(dateISO, report.period, -1) })} prefetch={false} className="rounded-full border border-border/60 p-2 hover:bg-accent" aria-label="Período anterior">
-            <ChevronLeft className="h-4 w-4" />
-          </Link>
-          <span className="px-2 text-sm font-medium first-letter:uppercase">{periodTitle(report)}</span>
-          <Link href={href({ data: shift(dateISO, report.period, 1) })} prefetch={false} className="rounded-full border border-border/60 p-2 hover:bg-accent" aria-label="Próximo período">
-            <ChevronRight className="h-4 w-4" />
-          </Link>
-          <Link href={href({ data: todayISO })} prefetch={false} className="ml-1 rounded-full border border-border/60 px-3 py-1.5 text-sm hover:bg-accent">
-            Hoje
-          </Link>
-        </div>
-      </div>
+      <PeriodControls
+        period={report.period}
+        dateISO={dateISO}
+        startISO={report.start}
+        endISO={report.endInclusive}
+        href={href}
+        basePath={basePath}
+        hidden={{ prof: showProfessionalFilter ? report.professionalId : null, q: report.query || null }}
+      />
 
       {showProfessionalFilter && (
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
@@ -216,6 +178,20 @@ export function ServiceReportView({
           {report.professionals.map((p) => (
             <Link key={p.id} href={href({ prof: p.id })} prefetch={false} className={chip(report.professionalId === p.id)}>
               {p.name}
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {report.quickItems.length > 0 && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          <span className="shrink-0 text-xs font-semibold tracking-wider text-muted-foreground">SERVIÇO</span>
+          <Link href={href({ q: null })} prefetch={false} className={chip(!report.query)}>
+            Todos
+          </Link>
+          {report.quickItems.map((item) => (
+            <Link key={item} href={href({ q: item })} prefetch={false} className={chip(report.query.toLowerCase() === item.toLowerCase())}>
+              {item}
             </Link>
           ))}
         </div>
@@ -252,7 +228,12 @@ export function ServiceReportView({
         </Panel>
         <Panel title="Distribuição" sub="os serviços mais feitos">
           {donut.length ? (
-            <DonutChart slices={donut} centerLabel={String(report.kpis.servicesDone)} centerSub="serviços" />
+            <DonutChart
+              slices={donut}
+              centerLabel={String(report.kpis.servicesDone)}
+              centerSub="serviços"
+              hrefFor={(label) => (label === "Outros" ? null : href({ q: label }))}
+            />
           ) : (
             <p className="py-10 text-center text-sm text-muted-foreground">Sem dados</p>
           )}
@@ -500,11 +481,24 @@ export function ServiceReportView({
 }
 
 /** Lê ?periodo=, ?data= e ?q= da URL com padrões seguros (mês atual). */
-export function parseReportParams(sp: { periodo?: string; data?: string; q?: string }) {
-  const period: ReportPeriod = sp.periodo === "dia" || sp.periodo === "semana" ? sp.periodo : "mes";
+export function parseReportParams(sp: { periodo?: string; data?: string; q?: string; de?: string; ate?: string }) {
+  const isIso = (v?: string) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  const toUtc = (v: string) => {
+    const [yy, mm, dd] = v.split("-").map(Number);
+    return new Date(Date.UTC(yy, mm - 1, dd));
+  };
+  let custom: { from: Date; to: Date } | undefined;
+  if (sp.periodo === "personalizado" && isIso(sp.de) && isIso(sp.ate)) {
+    const a = toUtc(sp.de!);
+    const b = toUtc(sp.ate!);
+    // Datas trocadas (fim antes do início) são invertidas em vez de dar erro.
+    custom = a <= b ? { from: a, to: b } : { from: b, to: a };
+  }
+  const period: ReportPeriod =
+    sp.periodo === "dia" || sp.periodo === "semana" ? sp.periodo : custom ? "personalizado" : "mes";
   const now = new Date();
   const fallback = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const dateISO = /^\d{4}-\d{2}-\d{2}$/.test(sp.data ?? "") ? sp.data! : fallback;
   const [y, m, d] = dateISO.split("-").map(Number);
-  return { period, dateISO, ref: new Date(Date.UTC(y, m - 1, d)), q: (sp.q ?? "").slice(0, 80) };
+  return { period, dateISO, ref: new Date(Date.UTC(y, m - 1, d)), q: (sp.q ?? "").slice(0, 80), custom };
 }

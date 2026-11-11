@@ -38,11 +38,11 @@ export async function ReportsPage({
 }) {
   const tab = parseTab(sp.aba);
   const tabs = <ReportTabs basePath={basePath} active={tab} />;
-  const { period, dateISO, ref, q } = parseReportParams(sp);
+  const { period, dateISO, ref, q, custom } = parseReportParams(sp);
   const professionalId = isAdmin ? sp.prof || undefined : undefined;
 
   if (tab === "servicos") {
-    const report = await getServiceReport({ ctx, period, ref, professionalId, q });
+    const report = await getServiceReport({ ctx, period, ref, professionalId, q, custom });
     return <ServiceReportView report={report} basePath={basePath} dateISO={dateISO} showProfessionalFilter={isAdmin} tabs={tabs} />;
   }
 
@@ -56,7 +56,7 @@ export async function ReportsPage({
   );
 
   if (tab === "produtos") {
-    const report = await getProductReport({ ctx, period, ref, professionalId, q });
+    const report = await getProductReport({ ctx, period, ref, professionalId, q, custom });
     return (
       <main className="space-y-4 p-3 sm:p-6">
         {header}

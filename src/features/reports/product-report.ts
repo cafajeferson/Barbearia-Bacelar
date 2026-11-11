@@ -1,6 +1,6 @@
 import type { AuthenticatedContext } from "@/server/auth/getAuthContext";
 import { withAppContext } from "@/server/db/context";
-import { periodRange, type ReportPeriod } from "./service";
+import { resolveRange, type CustomRange, type ReportPeriod } from "./service";
 
 /**
  * Produtos comprados pelos clientes no período: os pedidos junto do
@@ -14,16 +14,12 @@ export async function getProductReport(params: {
   ref: Date;
   professionalId?: string;
   q?: string;
+  custom?: CustomRange;
 }) {
   const { ctx, period, ref } = params;
   if (ctx.role === "CLIENT") throw new Error("Relatórios são só para a equipe.");
   const professionalId = ctx.role === "PROFESSIONAL" ? (ctx.userId ?? "-") : params.professionalId;
-  const { start, end } = periodRange(period, ref);
-  const prevRef =
-    period === "mes"
-      ? new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() - 1, 1))
-      : new Date(start.getTime() - (period === "semana" ? 7 : 1) * 86_400_000);
-  const prev = periodRange(period, prevRef);
+  const { start, end, prev } = resolveRange(period, ref, params.custom);
 
   const [lines, sales, professionals] = await Promise.all([
     withAppContext(ctx, (tx) =>
@@ -148,6 +144,7 @@ export async function getProductReport(params: {
   const series: { label: string; units: number }[] = [];
   const dm = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", timeZone: "UTC" });
   const wd = new Intl.DateTimeFormat("pt-BR", { weekday: "short", timeZone: "UTC" });
+  const dmShort = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
   if (period === "dia") {
     for (let h = 8; h <= 20; h++) series.push({ label: `${String(h).padStart(2, "0")}h`, units: 0 });
     for (const p of inPeriod) {
@@ -157,7 +154,7 @@ export async function getProductReport(params: {
   } else {
     for (let t = start.getTime(); t < end.getTime(); t += 86_400_000) {
       const d = new Date(t);
-      series.push({ label: period === "semana" ? wd.format(d).replace(".", "") : dm.format(d), units: 0 });
+      series.push({ label: period === "semana" ? wd.format(d).replace(".", "") : period === "personalizado" ? dmShort.format(d) : dm.format(d), units: 0 });
     }
     for (const p of inPeriod) {
       const i = Math.round((p.day.getTime() - start.getTime()) / 86_400_000);

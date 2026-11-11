@@ -97,10 +97,13 @@ export function DonutChart({
   slices,
   centerLabel,
   centerSub,
+  hrefFor,
 }: {
   slices: { label: string; value: number }[];
   centerLabel: string;
   centerSub: string;
+  /** Se informado, cada item da legenda vira link (ex.: filtrar o relatório por aquele serviço). */
+  hrefFor?: (label: string) => string | null;
 }) {
   const total = slices.reduce((s, x) => s + x.value, 0) || 1;
   const R = 70;
@@ -139,15 +142,29 @@ export function DonutChart({
         </text>
       </svg>
       <ul className="grid w-full grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-        {slices.map((s, i) => (
-          <li key={s.label} className="flex min-w-0 items-center gap-2">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: PALETTE[i % PALETTE.length] }} />
-            <span className="truncate text-muted-foreground" title={s.label}>
-              {s.label}
-            </span>
-            <span className="ml-auto font-semibold tabular-nums">{Math.round((s.value / total) * 100)}%</span>
-          </li>
-        ))}
+        {slices.map((s, i) => {
+          const content = (
+            <>
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: PALETTE[i % PALETTE.length] }} />
+              <span className="truncate text-muted-foreground" title={s.label}>
+                {s.label}
+              </span>
+              <span className="ml-auto font-semibold tabular-nums">{Math.round((s.value / total) * 100)}%</span>
+            </>
+          );
+          const link = hrefFor?.(s.label);
+          return (
+            <li key={s.label} className="min-w-0">
+              {link ? (
+                <a href={link} className="flex min-w-0 items-center gap-2 rounded-md px-1 py-0.5 hover:bg-accent">
+                  {content}
+                </a>
+              ) : (
+                <span className="flex min-w-0 items-center gap-2 px-1 py-0.5">{content}</span>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
