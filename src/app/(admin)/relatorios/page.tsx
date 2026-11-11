@@ -1,18 +1,8 @@
 import { getAuthContext } from "@/server/auth/getAuthContext";
-import { getServiceReport } from "@/features/reports/service";
-import { ServiceReportView, parseReportParams } from "@/features/reports/components/service-report-view";
+import { ReportsPage, type ReportsSearchParams } from "@/features/reports/components/reports-page";
 
-export default async function RelatoriosPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ periodo?: string; data?: string; prof?: string }>;
-}) {
+export default async function RelatoriosPage({ searchParams }: { searchParams: Promise<ReportsSearchParams> }) {
   const ctx = await getAuthContext();
-  if (!ctx) return null;
-
-  const sp = await searchParams;
-  const { period, dateISO, ref } = parseReportParams(sp);
-  const report = await getServiceReport({ ctx, period, ref, professionalId: sp.prof || undefined });
-
-  return <ServiceReportView report={report} basePath="/relatorios" dateISO={dateISO} showProfessionalFilter />;
+  if (!ctx || ctx.role !== "ADMIN") return null;
+  return <ReportsPage ctx={ctx} sp={await searchParams} basePath="/relatorios" isAdmin />;
 }

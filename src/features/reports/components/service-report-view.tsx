@@ -1,16 +1,28 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  CalendarCheck,
+  ChevronLeft,
+  ChevronRight,
+  DollarSign,
+  Receipt,
+  Scissors,
+  Search,
+  X,
+} from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { formatBRL } from "@/shared/lib/format";
 import type { ReportPeriod, ServiceReport } from "../service";
+import { AreaChart, DonutChart, VerticalBars } from "./charts";
 
 const PERIODS: { value: ReportPeriod; label: string }[] = [
   { value: "dia", label: "Dia" },
   { value: "semana", label: "Semana" },
   { value: "mes", label: "Mês" },
 ];
+const ATTENDANCE_LIMIT = 60;
 
 function shift(dateISO: string, period: ReportPeriod, direction: 1 | -1) {
   const [y, m, d] = dateISO.split("-").map(Number);
@@ -26,65 +38,154 @@ function shift(dateISO: string, period: ReportPeriod, direction: 1 | -1) {
 function periodTitle(report: ServiceReport) {
   const start = new Date(`${report.start}T00:00:00Z`);
   const end = new Date(`${report.endInclusive}T00:00:00Z`);
-  const fmt = (o: Intl.DateTimeFormatOptions, d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", ...o }).format(d);
+  const fmt = (o: Intl.DateTimeFormatOptions, d: Date) =>
+    new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", ...o }).format(d);
   if (report.period === "dia") return fmt({ weekday: "long", day: "numeric", month: "long", year: "numeric" }, start);
   if (report.period === "mes") return fmt({ month: "long", year: "numeric" }, start);
   return `${fmt({ day: "2-digit", month: "2-digit" }, start)} a ${fmt({ day: "2-digit", month: "2-digit", year: "numeric" }, end)}`;
 }
 
+function Panel({ title, sub, className, children }: { title: string; sub?: string; className?: string; children: React.ReactNode }) {
+  return (
+    <section className={cn("rounded-2xl border border-border/60 bg-card/80 p-4 shadow-sm sm:p-5", className)}>
+      <div className="mb-4">
+        <h2 className="font-semibold">{title}</h2>
+        {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Kpi({
+  label,
+  value,
+  sub,
+  delta,
+  icon: Icon,
+  highlight,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  delta: number | null;
+  icon: typeof Scissors;
+  highlight?: boolean;
+}) {
+  const up = delta !== null && delta >= 0;
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border p-4 sm:p-5",
+        highlight ? "border-primary/40 bg-gradient-to-br from-primary/20 via-card to-card" : "border-border/60 bg-card/80",
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm text-muted-foreground">{label}</p>
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+          <Icon className="h-4 w-4" />
+        </span>
+      </div>
+      <p className={cn("mt-1 text-2xl font-bold tracking-tight sm:text-3xl", highlight && "text-primary")}>{value}</p>
+      <p className="mt-1 flex flex-wrap items-center gap-1 text-xs">
+        {delta !== null ? (
+          <span className={cn("flex items-center font-medium", up ? "text-success" : "text-destructive")}>
+            {up ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
+            {Math.abs(delta).toFixed(1)}%
+          </span>
+        ) : null}
+        <span className="text-muted-foreground">{delta !== null ? "vs período anterior" : sub}</span>
+      </p>
+      {delta !== null && sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+    </div>
+  );
+}
+
 /**
- * Tela de Relatórios — usada pelo admin (todos ou um profissional) e pelo
- * profissional (só os próprios). Tudo por link/URL: período, data e
- * profissional ficam na query string, então dá para voltar e compartilhar.
+ * Dashboard de Relatórios — admin (todos ou um colaborador) e profissional
+ * (só os próprios). Período, data, colaborador e busca ficam na URL.
  */
 export function ServiceReportView({
   report,
   basePath,
   dateISO,
   showProfessionalFilter,
+  tabs,
 }: {
   report: ServiceReport;
   basePath: string;
   dateISO: string;
   showProfessionalFilter: boolean;
+  /** Abas de Relatórios (Serviços / Clientes / Produtos), mostradas logo abaixo do título. */
+  tabs?: React.ReactNode;
 }) {
-  const href = (over: { periodo?: ReportPeriod; data?: string; prof?: string | null }) => {
-    const q = new URLSearchParams();
-    q.set("periodo", over.periodo ?? report.period);
-    q.set("data", over.data ?? dateISO);
+  const href = (over: { periodo?: ReportPeriod; data?: string; prof?: string | null; q?: string | null }) => {
+    const p = new URLSearchParams();
+    p.set("periodo", over.periodo ?? report.period);
+    p.set("data", over.data ?? dateISO);
     const prof = over.prof === undefined ? report.professionalId : over.prof;
-    if (showProfessionalFilter && prof) q.set("prof", prof);
-    return `${basePath}?${q.toString()}`;
+    if (showProfessionalFilter && prof) p.set("prof", prof);
+    const q = over.q === undefined ? report.query : over.q;
+    if (q) p.set("q", q);
+    return `${basePath}?${p.toString()}`;
   };
   const chip = (active: boolean) =>
     cn(
-      "whitespace-nowrap rounded-full border px-3 py-1 text-sm",
-      active ? "border-primary bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent",
+      "whitespace-nowrap rounded-full border px-3 py-1 text-sm transition-colors",
+      active ? "border-primary bg-primary text-primary-foreground" : "border-border/60 text-muted-foreground hover:bg-accent",
     );
-  const max = report.items[0]?.total ?? 1;
   const today = new Date();
   const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  const proName = (id: string) => report.professionals.find((p) => p.id === id)?.name ?? "—";
   const showByPro = showProfessionalFilter && !report.professionalId && report.professionals.length > 1;
+  const top = report.items.slice(0, 5);
+  const others = report.items.slice(5).reduce((s, r) => s + r.total, 0);
+  const donut = [...top.map((r) => ({ label: r.item, value: r.total })), ...(others ? [{ label: "Outros", value: others }] : [])];
+  const maxItem = report.items[0]?.total ?? 1;
+  const proBars = report.professionals.map((p) => ({
+    label: p.name.split(" ")[0],
+    value: report.items.reduce((s, r) => s + (r.byProfessional[p.id] ?? 0), 0),
+  }));
 
   return (
     <main className="space-y-4 p-3 sm:p-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Relatórios</h1>
-        <p className="text-muted-foreground">
-          Serviços realizados (atendimentos concluídos). Combo conta 1 de cada: “Corte + Barba” = 1 corte e 1 barba.
-        </p>
+      {/* Cabeçalho: título, busca e período */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Relatórios</h1>
+          <p className="text-sm text-muted-foreground">
+            Serviços realizados · combo conta 1 de cada (“Corte + Barba” = 1 corte e 1 barba)
+          </p>
+        </div>
+        <form action={basePath} className="flex w-full items-center gap-2 sm:w-auto">
+          <input type="hidden" name="periodo" value={report.period} />
+          <input type="hidden" name="data" value={dateISO} />
+          {showProfessionalFilter && report.professionalId && <input type="hidden" name="prof" value={report.professionalId} />}
+          <label className="relative flex-1 sm:w-72">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              name="q"
+              defaultValue={report.query}
+              placeholder="Buscar cliente ou serviço…"
+              className="h-10 w-full rounded-full border border-border/60 bg-card pl-9 pr-3 text-sm outline-none focus:border-primary"
+            />
+          </label>
+          <button type="submit" className="h-10 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground">
+            Buscar
+          </button>
+        </form>
       </div>
 
+      {tabs}
+
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex gap-1 rounded-lg border p-1">
+        <div className="flex gap-1 rounded-full border border-border/60 bg-card p-1">
           {PERIODS.map((p) => (
             <Link
               key={p.value}
               href={href({ periodo: p.value })}
               prefetch={false}
               className={cn(
-                "rounded-md px-3 py-1.5 text-sm font-medium",
+                "rounded-full px-4 py-1.5 text-sm font-medium",
                 report.period === p.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent",
               )}
             >
@@ -93,14 +194,14 @@ export function ServiceReportView({
           ))}
         </div>
         <div className="flex items-center gap-1">
-          <Link href={href({ data: shift(dateISO, report.period, -1) })} prefetch={false} className="rounded-md border p-2 hover:bg-accent" aria-label="Período anterior">
+          <Link href={href({ data: shift(dateISO, report.period, -1) })} prefetch={false} className="rounded-full border border-border/60 p-2 hover:bg-accent" aria-label="Período anterior">
             <ChevronLeft className="h-4 w-4" />
           </Link>
-          <span className="min-w-0 px-2 text-sm font-medium first-letter:uppercase">{periodTitle(report)}</span>
-          <Link href={href({ data: shift(dateISO, report.period, 1) })} prefetch={false} className="rounded-md border p-2 hover:bg-accent" aria-label="Próximo período">
+          <span className="px-2 text-sm font-medium first-letter:uppercase">{periodTitle(report)}</span>
+          <Link href={href({ data: shift(dateISO, report.period, 1) })} prefetch={false} className="rounded-full border border-border/60 p-2 hover:bg-accent" aria-label="Próximo período">
             <ChevronRight className="h-4 w-4" />
           </Link>
-          <Link href={href({ data: todayISO })} prefetch={false} className="ml-1 rounded-md border px-3 py-1.5 text-sm hover:bg-accent">
+          <Link href={href({ data: todayISO })} prefetch={false} className="ml-1 rounded-full border border-border/60 px-3 py-1.5 text-sm hover:bg-accent">
             Hoje
           </Link>
         </div>
@@ -120,192 +221,290 @@ export function ServiceReportView({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Card className="p-4">
-          <p className="text-sm text-muted-foreground">Serviços feitos</p>
-          <p className="text-2xl font-semibold text-primary">{report.kpis.servicesDone}</p>
-          <p className="text-xs text-muted-foreground">combo conta cada serviço</p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-sm text-muted-foreground">Atendimentos</p>
-          <p className="text-2xl font-semibold">{report.kpis.attendances}</p>
-          <p className="text-xs text-muted-foreground">{report.kpis.walkIns} sem hora marcada</p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-sm text-muted-foreground">Faturamento</p>
-          <p className="text-2xl font-semibold">{formatBRL(report.kpis.revenue)}</p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-sm text-muted-foreground">Ticket médio</p>
-          <p className="text-2xl font-semibold">{formatBRL(report.kpis.averageTicket)}</p>
-          <p className="text-xs text-muted-foreground">por atendimento</p>
-        </Card>
-      </div>
-
-      {report.items.length === 0 ? (
-        <Card className="p-10 text-center text-muted-foreground">Nenhum serviço concluído neste período.</Card>
-      ) : (
-        <>
-          <Card className="p-4">
-            <h2 className="mb-3 font-semibold">Serviços feitos no período</h2>
-            <ul className="space-y-2">
-              {report.items.map((r) => (
-                <li key={r.item} className="grid grid-cols-[minmax(0,10rem)_1fr_3rem] items-center gap-2 text-sm sm:grid-cols-[minmax(0,14rem)_1fr_3rem]">
-                  <span className="truncate" title={r.item}>
-                    {r.item}
-                  </span>
-                  <span className="h-2.5 overflow-hidden rounded-full bg-secondary">
-                    <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.max(2, (r.total / max) * 100)}%` }} />
-                  </span>
-                  <span className="text-right font-semibold tabular-nums">{r.total}</span>
-                </li>
-              ))}
-            </ul>
-          </Card>
-
-          {report.buckets.length > 1 && (
-            <div>
-              <h2 className="mb-2 font-semibold">{report.period === "mes" ? "Semana a semana" : "Dia a dia"}</h2>
-              <div className="rounded-lg border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Serviço</TableHead>
-                      {report.buckets.map((b) => (
-                        <TableHead key={b.key} className="whitespace-nowrap text-right first-letter:uppercase">
-                          {b.label}
-                        </TableHead>
-                      ))}
-                      <TableHead className="text-right">Total</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {report.items.map((r) => (
-                      <TableRow key={r.item}>
-                        <TableCell className="whitespace-nowrap font-medium">{r.item}</TableCell>
-                        {report.buckets.map((b) => (
-                          <TableCell key={b.key} className="text-right tabular-nums">
-                            {r.byBucket[b.key] ?? <span className="text-muted-foreground">–</span>}
-                          </TableCell>
-                        ))}
-                        <TableCell className="text-right font-semibold tabular-nums">{r.total}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          )}
-
-          {showByPro && (
-            <div>
-              <h2 className="mb-2 font-semibold">Por colaborador</h2>
-              <div className="rounded-lg border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Serviço</TableHead>
-                      {report.professionals.map((p) => (
-                        <TableHead key={p.id} className="whitespace-nowrap text-right">
-                          {proName(p.id)}
-                        </TableHead>
-                      ))}
-                      <TableHead className="text-right">Total</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {report.items.map((r) => (
-                      <TableRow key={r.item}>
-                        <TableCell className="whitespace-nowrap font-medium">{r.item}</TableCell>
-                        {report.professionals.map((p) => (
-                          <TableCell key={p.id} className="text-right tabular-nums">
-                            {r.byProfessional[p.id] ?? <span className="text-muted-foreground">–</span>}
-                          </TableCell>
-                        ))}
-                        <TableCell className="text-right font-semibold tabular-nums">{r.total}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          )}
-
-          <div>
-            <h2 className="mb-2 font-semibold">Como foi vendido (itens do catálogo)</h2>
-            <div className="rounded-lg border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Item vendido</TableHead>
-                    <TableHead className="text-right">Vezes</TableHead>
-                    <TableHead className="text-right">Valor de tabela</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {report.catalog.map((c) => (
-                    <TableRow key={c.name}>
-                      <TableCell className="font-medium">{c.name}</TableCell>
-                      <TableCell className="text-right tabular-nums">{c.count}</TableCell>
-                      <TableCell className="whitespace-nowrap text-right tabular-nums">{formatBRL(c.revenue)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </div>
-        </>
+      {report.query && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-4 py-2 text-sm">
+          <Search className="h-4 w-4 text-primary" />
+          Mostrando só <span className="font-semibold">“{report.query}”</span> (nome do cliente ou serviço)
+          <Link href={href({ q: null })} prefetch={false} className="ml-auto flex items-center gap-1 text-primary hover:underline">
+            <X className="h-3.5 w-3.5" /> limpar busca
+          </Link>
+        </div>
       )}
 
-      {report.trend.rows.length > 0 && (
-        <div>
-          <h2 className="mb-2 font-semibold">Mês a mês (últimos 6 meses)</h2>
-          <div className="rounded-lg border">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Kpi label="Serviços feitos" value={String(report.kpis.servicesDone)} delta={report.deltas.servicesDone} sub="combo conta cada serviço" icon={Scissors} highlight />
+        <Kpi label="Atendimentos" value={String(report.kpis.attendances)} delta={report.deltas.attendances} sub={`${report.kpis.walkIns} sem hora marcada`} icon={CalendarCheck} />
+        <Kpi label="Faturamento" value={formatBRL(report.kpis.revenue)} delta={report.deltas.revenue} icon={DollarSign} />
+        <Kpi label="Ticket médio" value={formatBRL(report.kpis.averageTicket)} delta={report.deltas.averageTicket} sub="por atendimento" icon={Receipt} />
+      </div>
+
+      {/* Evolução + distribuição */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <Panel
+          title="Serviços feitos"
+          sub={report.period === "dia" ? "por hora do dia" : "dia a dia no período"}
+          className="lg:col-span-2"
+        >
+          <div className="text-foreground">
+            <AreaChart points={report.series.map((p) => ({ label: p.label, value: p.services }))} />
+          </div>
+        </Panel>
+        <Panel title="Distribuição" sub="os serviços mais feitos">
+          {donut.length ? (
+            <DonutChart slices={donut} centerLabel={String(report.kpis.servicesDone)} centerSub="serviços" />
+          ) : (
+            <p className="py-10 text-center text-sm text-muted-foreground">Sem dados</p>
+          )}
+        </Panel>
+      </div>
+
+      {/* Ranking com clientes + barras */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <Panel title="Ranking de serviços" sub="toque num serviço para ver quem fez" className="lg:col-span-2">
+          {report.items.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Nenhum serviço concluído neste período.</p>
+          ) : (
+            <ul className="divide-y divide-border/40">
+              {report.items.map((r) => {
+                const clients = report.clientsByItem[r.item] ?? [];
+                return (
+                  <li key={r.item}>
+                    <details className="group py-2">
+                      <summary className="grid cursor-pointer list-none grid-cols-[minmax(0,9rem)_1fr_2.5rem] items-center gap-3 text-sm sm:grid-cols-[minmax(0,13rem)_1fr_3rem]">
+                        <span className="truncate font-medium group-open:text-primary" title={r.item}>
+                          {r.item}
+                        </span>
+                        <span className="h-2 overflow-hidden rounded-full bg-secondary">
+                          <span className="block h-full rounded-full bg-gradient-to-r from-primary/60 to-primary" style={{ width: `${Math.max(2, (r.total / maxItem) * 100)}%` }} />
+                        </span>
+                        <span className="text-right font-semibold tabular-nums">{r.total}</span>
+                      </summary>
+                      <div className="mt-2 flex flex-wrap gap-1.5 pl-1">
+                        {clients.map((c) => (
+                          <Link
+                            key={c.name}
+                            href={href({ q: c.name })}
+                            prefetch={false}
+                            className="rounded-full border border-border/60 px-2.5 py-0.5 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+                          >
+                            {c.name}
+                            {c.count > 1 ? ` ×${c.count}` : ""}
+                          </Link>
+                        ))}
+                        <Link href={href({ q: r.item })} prefetch={false} className="rounded-full bg-primary/15 px-2.5 py-0.5 text-xs font-medium text-primary">
+                          ver só {r.item}
+                        </Link>
+                      </div>
+                    </details>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Panel>
+        <Panel title={showByPro ? "Por colaborador" : "Por dia da semana"} sub="serviços feitos">
+          <VerticalBars bars={showByPro ? proBars : report.weekdays.map((w) => ({ label: w.label, value: w.services }))} />
+        </Panel>
+      </div>
+
+      {/* Atendimentos com nome do cliente */}
+      <Panel
+        title="Atendimentos"
+        sub={
+          report.attendances.length > ATTENDANCE_LIMIT
+            ? `os ${ATTENDANCE_LIMIT} mais recentes de ${report.attendances.length} — use a busca para filtrar`
+            : `${report.attendances.length} no período`
+        }
+      >
+        {report.attendances.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Nenhum atendimento.</p>
+        ) : (
+          <div className="-mx-4 sm:-mx-5">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Serviço</TableHead>
-                  {report.trend.months.map((m) => (
-                    <TableHead key={m} className="whitespace-nowrap text-right">
-                      {m}
-                    </TableHead>
-                  ))}
+                  <TableHead>Data</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  {showProfessionalFilter && <TableHead>Colaborador</TableHead>}
+                  <TableHead>Serviços</TableHead>
+                  <TableHead className="text-right">Valor</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {report.trend.rows.map((r) => (
-                  <TableRow key={r.item}>
-                    <TableCell className="whitespace-nowrap font-medium">{r.item}</TableCell>
-                    {r.counts.map((n, i) => (
-                      <TableCell key={i} className="text-right tabular-nums">
-                        {n || <span className="text-muted-foreground">–</span>}
-                      </TableCell>
-                    ))}
+                {report.attendances.slice(0, ATTENDANCE_LIMIT).map((a) => (
+                  <TableRow key={a.id}>
+                    <TableCell className="whitespace-nowrap text-sm">
+                      {a.date} <span className="text-muted-foreground">{a.time}</span>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      <Link href={href({ q: a.client })} prefetch={false} className="font-medium hover:text-primary">
+                        {a.client}
+                      </Link>
+                      {a.walkIn && <span className="ml-1 text-[10px] text-muted-foreground">sem hora</span>}
+                    </TableCell>
+                    {showProfessionalFilter && <TableCell className="whitespace-nowrap text-sm">{a.professional}</TableCell>}
+                    <TableCell className="text-sm text-muted-foreground">{a.services}</TableCell>
+                    <TableCell className="whitespace-nowrap text-right tabular-nums">
+                      {a.total === 0 ? <span className="text-xs text-success">plano</span> : formatBRL(a.total)}
+                    </TableCell>
                   </TableRow>
                 ))}
-                <TableRow>
-                  <TableCell className="font-semibold">Total</TableCell>
-                  {report.trend.totals.map((n, i) => (
-                    <TableCell key={i} className="text-right font-semibold tabular-nums">
-                      {n}
-                    </TableCell>
-                  ))}
-                </TableRow>
               </TableBody>
             </Table>
           </div>
-        </div>
+        )}
+      </Panel>
+
+      {/* Detalhamento */}
+      {report.items.length > 0 && (
+        <details className="rounded-2xl border border-border/60 bg-card/80 p-4 sm:p-5" open>
+          <summary className="cursor-pointer font-semibold">Detalhamento</summary>
+          <div className="mt-4 space-y-5">
+            {report.buckets.length > 1 && (
+              <div>
+                <h3 className="mb-2 text-sm font-semibold">{report.period === "mes" ? "Semana a semana" : "Dia a dia"}</h3>
+                <div className="rounded-lg border border-border/60">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Serviço</TableHead>
+                        {report.buckets.map((b) => (
+                          <TableHead key={b.key} className="whitespace-nowrap text-right first-letter:uppercase">
+                            {b.label}
+                          </TableHead>
+                        ))}
+                        <TableHead className="text-right">Total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {report.items.map((r) => (
+                        <TableRow key={r.item}>
+                          <TableCell className="whitespace-nowrap font-medium">{r.item}</TableCell>
+                          {report.buckets.map((b) => (
+                            <TableCell key={b.key} className="text-right tabular-nums">
+                              {r.byBucket[b.key] ?? <span className="text-muted-foreground">–</span>}
+                            </TableCell>
+                          ))}
+                          <TableCell className="text-right font-semibold tabular-nums">{r.total}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+
+            {showByPro && (
+              <div>
+                <h3 className="mb-2 text-sm font-semibold">Por colaborador</h3>
+                <div className="rounded-lg border border-border/60">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Serviço</TableHead>
+                        {report.professionals.map((p) => (
+                          <TableHead key={p.id} className="whitespace-nowrap text-right">
+                            {p.name}
+                          </TableHead>
+                        ))}
+                        <TableHead className="text-right">Total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {report.items.map((r) => (
+                        <TableRow key={r.item}>
+                          <TableCell className="whitespace-nowrap font-medium">{r.item}</TableCell>
+                          {report.professionals.map((p) => (
+                            <TableCell key={p.id} className="text-right tabular-nums">
+                              {r.byProfessional[p.id] ?? <span className="text-muted-foreground">–</span>}
+                            </TableCell>
+                          ))}
+                          <TableCell className="text-right font-semibold tabular-nums">{r.total}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <h3 className="mb-2 text-sm font-semibold">Como foi vendido (itens do catálogo)</h3>
+              <div className="rounded-lg border border-border/60">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Item vendido</TableHead>
+                      <TableHead className="text-right">Vezes</TableHead>
+                      <TableHead className="text-right">Valor de tabela</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {report.catalog.map((c) => (
+                      <TableRow key={c.name}>
+                        <TableCell className="font-medium">{c.name}</TableCell>
+                        <TableCell className="text-right tabular-nums">{c.count}</TableCell>
+                        <TableCell className="whitespace-nowrap text-right tabular-nums">{formatBRL(c.revenue)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+
+            {report.trend.rows.length > 0 && (
+              <div>
+                <h3 className="mb-2 text-sm font-semibold">Mês a mês (últimos 6 meses)</h3>
+                <div className="rounded-lg border border-border/60">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Serviço</TableHead>
+                        {report.trend.months.map((m) => (
+                          <TableHead key={m} className="whitespace-nowrap text-right">
+                            {m}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {report.trend.rows.map((r) => (
+                        <TableRow key={r.item}>
+                          <TableCell className="whitespace-nowrap font-medium">{r.item}</TableCell>
+                          {r.counts.map((n, i) => (
+                            <TableCell key={i} className="text-right tabular-nums">
+                              {n || <span className="text-muted-foreground">–</span>}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                      <TableRow>
+                        <TableCell className="font-semibold">Total</TableCell>
+                        {report.trend.totals.map((n, i) => (
+                          <TableCell key={i} className="text-right font-semibold tabular-nums">
+                            {n}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+          </div>
+        </details>
       )}
     </main>
   );
 }
 
-/** Lê ?periodo= e ?data= da URL com padrões seguros (mês atual). */
-export function parseReportParams(sp: { periodo?: string; data?: string }) {
+/** Lê ?periodo=, ?data= e ?q= da URL com padrões seguros (mês atual). */
+export function parseReportParams(sp: { periodo?: string; data?: string; q?: string }) {
   const period: ReportPeriod = sp.periodo === "dia" || sp.periodo === "semana" ? sp.periodo : "mes";
   const now = new Date();
   const fallback = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const dateISO = /^\d{4}-\d{2}-\d{2}$/.test(sp.data ?? "") ? sp.data! : fallback;
   const [y, m, d] = dateISO.split("-").map(Number);
-  return { period, dateISO, ref: new Date(Date.UTC(y, m - 1, d)) };
+  return { period, dateISO, ref: new Date(Date.UTC(y, m - 1, d)), q: (sp.q ?? "").slice(0, 80) };
 }

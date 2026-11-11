@@ -1,18 +1,9 @@
 import { getAuthContext } from "@/server/auth/getAuthContext";
-import { getServiceReport } from "@/features/reports/service";
-import { ServiceReportView, parseReportParams } from "@/features/reports/components/service-report-view";
+import { ReportsPage, type ReportsSearchParams } from "@/features/reports/components/reports-page";
 
-/** Relatórios do profissional: sempre só os próprios serviços (forçado no service + RLS). */
-export default async function MeusRelatoriosPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ periodo?: string; data?: string }>;
-}) {
+/** Relatórios do profissional: sempre só os próprios dados (forçado nos services + RLS). */
+export default async function MeusRelatoriosPage({ searchParams }: { searchParams: Promise<ReportsSearchParams> }) {
   const ctx = await getAuthContext();
   if (!ctx || ctx.role !== "PROFESSIONAL") return null;
-
-  const { period, dateISO, ref } = parseReportParams(await searchParams);
-  const report = await getServiceReport({ ctx, period, ref });
-
-  return <ServiceReportView report={report} basePath="/meus-relatorios" dateISO={dateISO} showProfessionalFilter={false} />;
+  return <ReportsPage ctx={ctx} sp={await searchParams} basePath="/meus-relatorios" isAdmin={false} />;
 }

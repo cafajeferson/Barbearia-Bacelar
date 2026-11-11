@@ -76,16 +76,24 @@ export async function getServiceReport(params: {
   period: ReportPeriod;
   ref: Date;
   professionalId?: string;
+  /** Busca individual: nome do cliente ou serviço (sem diferenciar acento/maiúscula). */
+  q?: string;
 }) {
   const { ctx, period, ref } = params;
   if (ctx.role === "CLIENT") throw new Error("Relatórios são só para a equipe.");
   const professionalId = ctx.role === "PROFESSIONAL" ? (ctx.userId ?? "-") : params.professionalId;
 
   const { start, end } = periodRange(period, ref);
+  // Período anterior do mesmo tamanho, para a variação % dos cards.
+  const prevRef =
+    period === "mes"
+      ? utcDay(start.getUTCFullYear(), start.getUTCMonth() - 1, 1)
+      : new Date(start.getTime() - (period === "semana" ? 7 : 1) * 86_400_000);
+  const prev = periodRange(period, prevRef);
   // Tendência mês a mês: os 6 meses até o mês de referência.
   const trendStart = utcDay(ref.getUTCFullYear(), ref.getUTCMonth() - 5, 1);
   const trendEnd = utcDay(ref.getUTCFullYear(), ref.getUTCMonth() + 1, 1);
-  const rangeStart = trendStart < start ? trendStart : start;
+  const rangeStart = [trendStart, start, prev.start].reduce((a, b) => (b < a ? b : a));
   const rangeEnd = trendEnd > end ? trendEnd : end;
 
   const [appointments, professionals] = await Promise.all([
@@ -100,7 +108,11 @@ export async function getServiceReport(params: {
           scheduledDate: true,
           professionalId: true,
           source: true,
+          id: true,
+          startTime: true,
           totalPrice: true,
+          client: { select: { name: true } },
+          professional: { select: { name: true } },
           services: { select: { priceAtBooking: true, service: { select: { name: true } } } },
         },
       }),
@@ -112,7 +124,26 @@ export async function getServiceReport(params: {
       : Promise.resolve([]),
   ]);
 
-  const inPeriod = appointments.filter((a) => a.scheduledDate >= start && a.scheduledDate < end);
+  // Busca: se o termo bate no NOME DO CLIENTE, entra o atendimento inteiro;
+  // se bate num SERVIÇO, entram só os serviços que batem (buscar "barba"
+  // conta as barbas, inclusive dentro de "Corte + Barba").
+  const fold = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const q = fold(params.q?.trim() ?? "");
+  const filtered = appointments
+    .map((a) => {
+      if (!q || fold(a.client.name).includes(q)) return a;
+      const services = a.services
+        .map((sv) => ({ ...sv, parts: splitServiceName(sv.service.name).filter((it) => fold(it).includes(q)) }))
+        .filter((sv) => sv.parts.length > 0);
+      return services.length ? { ...a, services, onlyParts: true as const } : null;
+    })
+    .filter((a): a is NonNullable<typeof a> => a !== null);
+  const partsOf = (a: (typeof filtered)[number], sv: (typeof filtered)[number]["services"][number]) =>
+    "parts" in sv && Array.isArray((sv as { parts?: string[] }).parts)
+      ? (sv as { parts: string[] }).parts
+      : splitServiceName(sv.service.name);
+
+  const inPeriod = filtered.filter((a) => a.scheduledDate >= start && a.scheduledDate < end);
   const cols = buckets(period, start, end);
 
   type Row = { item: string; total: number; byBucket: Record<string, number>; byProfessional: Record<string, number> };
@@ -129,7 +160,7 @@ export async function getServiceReport(params: {
       cat.count++;
       cat.revenue += Number(s.priceAtBooking);
       catalogRows.set(s.service.name, cat);
-      for (const item of splitServiceName(s.service.name)) {
+      for (const item of partsOf(a, s)) {
         const row = rows.get(item) ?? { item, total: 0, byBucket: {}, byProfessional: {} };
         row.total++;
         row.byBucket[bucket] = (row.byBucket[bucket] ?? 0) + 1;
@@ -147,15 +178,73 @@ export async function getServiceReport(params: {
   };
   const trend = new Map<string, number[]>();
   const trendTotals = months.map(() => 0);
-  for (const a of appointments) {
+  for (const a of filtered) {
     const idx = months.findIndex((m, i) => a.scheduledDate >= m && (i === 5 ? a.scheduledDate < trendEnd : a.scheduledDate < months[i + 1]));
     if (idx < 0) continue;
     for (const s of a.services) {
-      for (const item of splitServiceName(s.service.name)) {
+      for (const item of partsOf(a, s)) {
         const arr = trend.get(item) ?? months.map(() => 0);
         arr[idx]++;
         trend.set(item, arr);
         trendTotals[idx]++;
+      }
+    }
+  }
+
+  // Série para o gráfico de área: mês/semana -> por dia; dia -> por hora.
+  const series: { label: string; services: number; revenue: number }[] = [];
+  if (period === "dia") {
+    for (let h = 8; h <= 20; h++) series.push({ label: `${String(h).padStart(2, "0")}h`, services: 0, revenue: 0 });
+  } else {
+    const dm = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", timeZone: "UTC" });
+    const wd = new Intl.DateTimeFormat("pt-BR", { weekday: "short", timeZone: "UTC" });
+    for (let t = start.getTime(); t < end.getTime(); t += 86_400_000) {
+      const d = new Date(t);
+      series.push({ label: period === "semana" ? wd.format(d).replace(".", "") : dm.format(d), services: 0, revenue: 0 });
+    }
+  }
+  const weekdays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((label) => ({ label, services: 0 }));
+  for (const a of inPeriod) {
+    const n = a.services.reduce((k, sv) => k + partsOf(a, sv).length, 0);
+    const idx =
+      period === "dia"
+        ? Math.min(Math.max(Number(a.startTime.slice(0, 2)) - 8, 0), series.length - 1)
+        : Math.round((a.scheduledDate.getTime() - start.getTime()) / 86_400_000);
+    if (series[idx]) {
+      series[idx].services += n;
+      series[idx].revenue += Number(a.totalPrice);
+    }
+    weekdays[a.scheduledDate.getUTCDay()].services += n;
+  }
+
+  const inPrev = filtered.filter((a) => a.scheduledDate >= prev.start && a.scheduledDate < prev.end);
+  const prevKpis = {
+    attendances: inPrev.length,
+    servicesDone: inPrev.reduce((k, a) => k + a.services.reduce((j, sv) => j + partsOf(a, sv).length, 0), 0),
+    revenue: inPrev.reduce((k, a) => k + Number(a.totalPrice), 0),
+  };
+  const delta = (now: number, before: number) => (before > 0 ? ((now - before) / before) * 100 : null);
+
+  const dmy = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
+  const attendances = [...inPeriod]
+    .sort((x, y) => y.scheduledDate.getTime() - x.scheduledDate.getTime() || y.startTime.localeCompare(x.startTime))
+    .map((a) => ({
+      id: a.id,
+      date: dmy.format(a.scheduledDate),
+      time: a.startTime,
+      client: a.client.name,
+      professional: a.professional.name,
+      services: a.services.map((sv) => sv.service.name).join(" · "),
+      total: Number(a.totalPrice),
+      walkIn: a.source === "WALK_IN",
+    }));
+  const clientsByItem = new Map<string, Map<string, number>>();
+  for (const a of inPeriod) {
+    for (const sv of a.services) {
+      for (const item of partsOf(a, sv)) {
+        const m = clientsByItem.get(item) ?? new Map<string, number>();
+        m.set(a.client.name, (m.get(a.client.name) ?? 0) + 1);
+        clientsByItem.set(item, m);
       }
     }
   }
@@ -176,6 +265,27 @@ export async function getServiceReport(params: {
       averageTicket: inPeriod.length ? revenue / inPeriod.length : 0,
       walkIns,
     },
+    deltas: {
+      servicesDone: delta(totalItems, prevKpis.servicesDone),
+      attendances: delta(inPeriod.length, prevKpis.attendances),
+      revenue: delta(revenue, prevKpis.revenue),
+      averageTicket: delta(
+        inPeriod.length ? revenue / inPeriod.length : 0,
+        prevKpis.attendances ? prevKpis.revenue / prevKpis.attendances : 0,
+      ),
+    },
+    series,
+    query: params.q?.trim() ?? "",
+    attendances,
+    clientsByItem: Object.fromEntries(
+      Array.from(clientsByItem.entries()).map(([item, m]) => [
+        item,
+        Array.from(m.entries())
+          .map(([name, count]) => ({ name, count }))
+          .sort((x, y) => y.count - x.count || x.name.localeCompare(y.name, "pt-BR")),
+      ]),
+    ) as Record<string, { name: string; count: number }[]>,
+    weekdays: [...weekdays.slice(1), weekdays[0]],
     buckets: cols.map((c) => ({ key: c.key, label: c.label })),
     items,
     catalog: Array.from(catalogRows.values()).sort((x, y) => y.count - x.count),
