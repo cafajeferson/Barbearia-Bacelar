@@ -22,6 +22,7 @@ import {
   LogOut,
   Menu,
   Wallet,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -30,6 +31,7 @@ const TOP_LINKS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/agenda", label: "Agenda Mestre", icon: CalendarDays },
   { href: "/recorrencias", label: "Recorrências", icon: Repeat },
+  { href: "/relatorios", label: "Relatórios", icon: BarChart3 },
 ];
 
 const GROUPS: { label: string; links: { href: string; label: string; icon: typeof Users }[] }[] = [

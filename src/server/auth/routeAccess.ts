@@ -13,6 +13,7 @@ const ADMIN_PREFIXES = [
   "/catalogo",
   "/produtos",
   "/fechamento",
+  "/relatorios",
   "/comissoes",
   "/assinaturas",
   "/promocoes",
@@ -20,7 +21,7 @@ const ADMIN_PREFIXES = [
   "/em-aberto",
   "/configuracoes",
 ];
-const PROFESSIONAL_PREFIXES = ["/minha-agenda"];
+const PROFESSIONAL_PREFIXES = ["/minha-agenda", "/meus-relatorios"];
 const CLIENT_PREFIXES = ["/inicio", "/horarios", "/agendar", "/plano"];
 // Única exceção: raiz redireciona por papel (ou pra /login) sozinha, e
 // /login precisa ser público. Qualquer rota nova PRECISA entrar numa das

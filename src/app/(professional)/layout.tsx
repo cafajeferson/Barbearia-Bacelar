@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Image from "next/image";
 import { getAuthContext, getCurrentUserName } from "@/server/auth/getAuthContext";
 import { LogoutButton } from "@/shared/components/logout-button";
+import { ProfessionalNav } from "@/shared/components/professional-nav";
 
 export default async function ProfessionalLayout({ children }: { children: React.ReactNode }) {
   const ctx = await getAuthContext();
@@ -22,6 +23,7 @@ export default async function ProfessionalLayout({ children }: { children: React
         </div>
         <LogoutButton />
       </header>
+      <ProfessionalNav />
       <div className="mx-auto max-w-3xl">{children}</div>
     </div>
   );
