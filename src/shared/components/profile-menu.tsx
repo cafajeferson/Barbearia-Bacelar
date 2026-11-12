@@ -49,6 +49,7 @@ export function ProfileMenu({
   avatarUrl = null,
   profileSwitch,
   variant = "sidebar",
+  submenu = variant === "sidebar",
 }: {
   name: string;
   email: string;
@@ -57,6 +58,8 @@ export function ProfileMenu({
   profileSwitch: ProfileSwitch | null;
   /** "sidebar": linha com avatar + nome (rodapé do menu do admin); "compact": só o avatar (cabeçalhos). */
   variant?: "sidebar" | "compact";
+  /** "Trocar perfil" como submenu lateral (computador) ou em lista no próprio menu (celular). */
+  submenu?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [askName, setAskName] = useState(false);
@@ -112,7 +115,12 @@ export function ProfileMenu({
             )}
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align={variant === "sidebar" ? "start" : "end"} side={variant === "sidebar" ? "top" : "bottom"} className="w-60">
+        <DropdownMenuContent
+          align={variant === "sidebar" ? "start" : "end"}
+          side={variant === "sidebar" ? "top" : "bottom"}
+          collisionPadding={8}
+          className="w-60 max-w-[calc(100vw-1rem)]"
+        >
           <DropdownMenuLabel className="font-normal">
             <p className="truncate font-semibold">{name}</p>
             <p className="truncate text-xs text-muted-foreground">{email}</p>
@@ -126,7 +134,26 @@ export function ProfileMenu({
               </Link>
             </DropdownMenuItem>
           )}
-          {profileSwitch && (
+          {/* Celular / cabeçalhos: opções em lista, dentro do próprio menu (o
+              submenu lateral saía da tela). Computador: submenu ao lado. */}
+          {profileSwitch && !submenu && (
+            <>
+              <DropdownMenuLabel className="flex items-center text-xs font-medium text-muted-foreground">
+                <Repeat className="mr-2 h-4 w-4" /> Trocar perfil
+              </DropdownMenuLabel>
+              {MODES.filter((m) => profileSwitch.options.includes(m.value)).map((m) => (
+                <DropdownMenuItem key={m.value} onSelect={() => choose(m.value)} className="justify-between pl-8">
+                  {m.label}
+                  {m.value === mode ? (
+                    <span className="flex items-center gap-1 text-xs text-primary">
+                      <Check className="h-3.5 w-3.5" /> atual
+                    </span>
+                  ) : null}
+                </DropdownMenuItem>
+              ))}
+            </>
+          )}
+          {profileSwitch && submenu && (
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 <Repeat className="mr-2 h-4 w-4" /> Trocar perfil

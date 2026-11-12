@@ -28,9 +28,13 @@ test.describe("Profissional — Minha Agenda", () => {
     await expect(page.getByText("Receita")).toBeVisible();
     await expect(page.getByText("Pendente")).toBeVisible();
 
-    await page.getByRole("button", { name: "Ver Semana" }).click();
+    await page.getByRole("link", { name: "Semana", exact: true }).click();
     await expect(page).toHaveURL(/view=semana/);
-    await expect(page.getByRole("button", { name: "Ver Dia" })).toBeVisible();
+    await page.getByRole("link", { name: "Mês", exact: true }).click();
+    await expect(page).toHaveURL(/view=mes/);
+    await expect(page.getByText("Sáb", { exact: true })).toBeVisible();
+    await page.getByRole("link", { name: "Dia", exact: true }).click();
+    await expect(page).toHaveURL(/view=dia/);
   });
 
   test("registra um walk-in e o vê na agenda do dia", async ({ page }) => {

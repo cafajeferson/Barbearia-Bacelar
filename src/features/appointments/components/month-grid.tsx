@@ -12,13 +12,17 @@ export function MonthGrid({
   month, // 0-indexed
   summary,
   unitId,
+  dayHref,
 }: {
   year: number;
   month: number;
   summary: Map<string, { total: number; completed: number }>;
   unitId?: string;
+  /** Link de cada dia; padrão = dia na Agenda Mestre. A Minha Agenda passa o dela. */
+  dayHref?: (iso: string) => string;
 }) {
   const unitQs = unitId ? `&unit=${unitId}` : "";
+  const hrefFor = dayHref ?? ((iso: string) => `/agenda?date=${iso}&view=day${unitQs}`);
   const firstOfMonth = new Date(year, month, 1);
   const firstWeekday = firstOfMonth.getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -59,7 +63,7 @@ export function MonthGrid({
           return (
             <Link
               key={i}
-              href={`/agenda?date=${iso}&view=day${unitQs}`}
+              href={hrefFor(iso)}
               // Até 42 células por mês — com prefetch automático (padrão do
               // Next), isso disparava 42 renderizações completas da Agenda
               // Mestre (cada uma abrindo transação no banco) só de a grade
@@ -77,11 +81,11 @@ export function MonthGrid({
                 <div className="space-y-0.5 text-xs text-muted-foreground">
                   <p className="flex items-center gap-1.5">
                     <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                    {counts.total} agend.
+                    {counts.total}<span className="hidden sm:inline"> agend.</span>
                   </p>
                   <p className="flex items-center gap-1.5">
                     <span className="h-1.5 w-1.5 rounded-full bg-success" />
-                    {counts.completed} concl.
+                    {counts.completed}<span className="hidden sm:inline"> concl.</span>
                   </p>
                 </div>
               )}

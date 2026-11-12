@@ -98,7 +98,20 @@ function NavLink({
 }
 
 /** Conteúdo do menu (logo, links, usuário) — o mesmo na barra fixa do desktop e na gaveta do celular. */
-function SidebarBody({ userName, userEmail, avatarUrl, profileSwitch }: { userName: string; userEmail: string; avatarUrl?: string | null; profileSwitch: ProfileSwitch | null }) {
+function SidebarBody({
+  userName,
+  userEmail,
+  avatarUrl,
+  profileSwitch,
+  mobile = false,
+}: {
+  userName: string;
+  userEmail: string;
+  avatarUrl?: string | null;
+  profileSwitch: ProfileSwitch | null;
+  /** Gaveta do celular: "Trocar perfil" em lista (o submenu lateral sairia da tela). */
+  mobile?: boolean;
+}) {
   const pathname = usePathname();
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
@@ -135,7 +148,7 @@ function SidebarBody({ userName, userEmail, avatarUrl, profileSwitch }: { userNa
       </nav>
 
       <div className="border-t border-sidebar-border px-3 py-2">
-        <ProfileMenu name={userName} email={userEmail} avatarUrl={avatarUrl} profileSwitch={profileSwitch} />
+        <ProfileMenu name={userName} email={userEmail} avatarUrl={avatarUrl} profileSwitch={profileSwitch} submenu={!mobile} />
       </div>
     </>
   );
@@ -174,7 +187,7 @@ export function AdminMobileNav({ userName, userEmail, avatarUrl, profileSwitch }
       </SheetTrigger>
       <SheetContent side="left" className="flex w-72 max-w-[85vw] flex-col gap-0 border-sidebar-border bg-sidebar p-0">
         <SheetTitle className="sr-only">Menu</SheetTitle>
-        <SidebarBody userName={userName} userEmail={userEmail} avatarUrl={avatarUrl} profileSwitch={profileSwitch} />
+        <SidebarBody userName={userName} userEmail={userEmail} avatarUrl={avatarUrl} profileSwitch={profileSwitch} mobile />
       </SheetContent>
     </Sheet>
   );

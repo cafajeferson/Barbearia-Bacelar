@@ -308,13 +308,17 @@ export async function getAgendaMonthSummary(params: {
   monthStart: Date;
   monthEnd: Date;
   unitId?: string;
+  professionalId?: string;
 }) {
+  // Profissional só conta os próprios agendamentos, venha o que vier no parâmetro.
+  const professionalId = params.ctx.role === "PROFESSIONAL" ? (params.ctx.userId ?? "-") : params.professionalId;
   return withAppContext(params.ctx, async (tx) => {
     const rows = await tx.appointment.findMany({
       where: {
         scheduledDate: { gte: params.monthStart, lte: params.monthEnd },
         status: { not: "CANCELLED" },
         unitId: params.unitId,
+        professionalId,
       },
       select: { scheduledDate: true, status: true },
     });

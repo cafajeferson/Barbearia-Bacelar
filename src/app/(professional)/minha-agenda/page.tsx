@@ -2,6 +2,10 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { getAuthContext } from "@/server/auth/getAuthContext";
 import { getOwnDayData, getOwnWeekData } from "@/features/professionals/service";
+import { getAgendaMonthSummary } from "@/features/appointments/service";
+import { MonthGrid } from "@/features/appointments/components/month-grid";
+import { DateJump } from "@/features/appointments/components/date-jump";
+import { cn } from "@/lib/utils";
 import { withAppContext } from "@/server/db/context";
 import { ttlCached } from "@/server/db/ttl-cache";
 import { Card } from "@/components/ui/card";
@@ -42,12 +46,20 @@ export default async function MinhaAgendaPage({
   const { date: dateParam, view } = await searchParams;
   const date = parseDateParam(dateParam);
   const dateISO = toISODate(date);
-  const isWeek = view === "semana";
+  const mode: "dia" | "semana" | "mes" = view === "semana" ? "semana" : view === "mes" ? "mes" : "dia";
+  const isWeek = mode === "semana";
 
-  const prevDate = new Date(date);
-  prevDate.setDate(prevDate.getDate() - (isWeek ? 7 : 1));
-  const nextDate = new Date(date);
-  nextDate.setDate(nextDate.getDate() + (isWeek ? 7 : 1));
+  // Setas: dia a dia, semana a semana ou mês a mês, conforme a visão.
+  const prevDate =
+    mode === "mes"
+      ? new Date(date.getFullYear(), date.getMonth() - 1, 1)
+      : new Date(date.getFullYear(), date.getMonth(), date.getDate() - (isWeek ? 7 : 1));
+  const nextDate =
+    mode === "mes"
+      ? new Date(date.getFullYear(), date.getMonth() + 1, 1)
+      : new Date(date.getFullYear(), date.getMonth(), date.getDate() + (isWeek ? 7 : 1));
+  const link = (m: string, d: Date | string) =>
+    `/minha-agenda?view=${m}&date=${typeof d === "string" ? d : toISODate(d)}`;
 
   // A unidade quase nunca muda, mas essa consulta rodava em série ANTES dos
   // dados da agenda — uma transação inteira (~470ms até us-east-1) a cada
@@ -57,11 +69,10 @@ export default async function MinhaAgendaPage({
   );
   const professionalOption = [{ id: ctx.userId, name: "Você", color: "#F5B301" }];
 
-  const dateLabel = new Intl.DateTimeFormat("pt-BR", {
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-  }).format(date);
+  const dateLabel =
+    mode === "mes"
+      ? new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(date)
+      : new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(date);
 
   return (
     <main className="space-y-4 p-4">
@@ -70,15 +81,28 @@ export default async function MinhaAgendaPage({
           <h1 className="text-xl font-semibold">Minha Agenda</h1>
           <p className="text-sm text-muted-foreground">Gerencie seus atendimentos</p>
         </div>
-        <Link href={`/minha-agenda?view=${isWeek ? "dia" : "semana"}&date=${dateISO}`}>
-          <Button variant="outline" size="sm">
-            {isWeek ? "Ver Dia" : "Ver Semana"}
-          </Button>
-        </Link>
+        <div className="flex overflow-hidden rounded-md border text-sm">
+          {(
+            [
+              ["dia", "Dia"],
+              ["semana", "Semana"],
+              ["mes", "Mês"],
+            ] as const
+          ).map(([m, label]) => (
+            <Link
+              key={m}
+              href={link(m, dateISO)}
+              prefetch={false}
+              className={cn("px-3 py-1.5", mode === m ? "bg-primary text-primary-foreground" : "hover:bg-accent")}
+            >
+              {label}
+            </Link>
+          ))}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Link href={`/minha-agenda?view=${isWeek ? "semana" : "dia"}&date=${dateISO}`}>
+        <Link href={link(mode, dateISO)}>
           <Button variant="outline" size="icon">
             <RefreshCw className="h-4 w-4" />
           </Button>
@@ -92,25 +116,31 @@ export default async function MinhaAgendaPage({
         />
       </div>
 
-      <div className="flex items-center justify-center gap-4">
-        <Link
-          href={`/minha-agenda?view=${isWeek ? "semana" : "dia"}&date=${toISODate(prevDate)}`}
-          className="rounded-md border p-1.5 hover:bg-accent"
-        >
+      <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-4">
+        <Link href={link(mode, prevDate)} prefetch={false} className="rounded-md border p-1.5 hover:bg-accent">
           <ChevronLeft className="h-4 w-4" />
         </Link>
         <span className="min-w-48 text-center text-sm font-medium capitalize">
           {isWeek ? `Semana de ${dateLabel}` : dateLabel}
         </span>
-        <Link
-          href={`/minha-agenda?view=${isWeek ? "semana" : "dia"}&date=${toISODate(nextDate)}`}
-          className="rounded-md border p-1.5 hover:bg-accent"
-        >
+        <Link href={link(mode, nextDate)} prefetch={false} className="rounded-md border p-1.5 hover:bg-accent">
           <ChevronRight className="h-4 w-4" />
         </Link>
       </div>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <DateJump basePath="/minha-agenda" view={mode} dateISO={dateISO} mode={mode === "mes" ? "month" : "day"} />
+        <Link
+          href={link(mode, toISODate(new Date()))}
+          prefetch={false}
+          className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent"
+        >
+          Hoje
+        </Link>
+      </div>
 
-      {isWeek ? (
+      {mode === "mes" ? (
+        <OwnMonthView ctx={ctx} date={date} />
+      ) : isWeek ? (
         <WeekView ctx={ctx} startDate={date} />
       ) : (
         <DayView ctx={ctx} date={date} dateISO={dateISO} unitId={unit.id} />
@@ -230,5 +260,20 @@ async function WeekView({ ctx, startDate }: { ctx: NonNullable<Awaited<ReturnTyp
         );
       })}
     </div>
+  );
+}
+
+/** Visão Mês: quantos agendamentos e concluídos o profissional tem em cada dia; toque abre o dia. */
+async function OwnMonthView({ ctx, date }: { ctx: NonNullable<Awaited<ReturnType<typeof getAuthContext>>>; date: Date }) {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  // Colunas @db.Date são meia-noite UTC: limites do mês na mesma âncora.
+  const summary = await getAgendaMonthSummary({
+    ctx,
+    monthStart: new Date(Date.UTC(year, month, 1)),
+    monthEnd: new Date(Date.UTC(year, month + 1, 0)),
+  });
+  return (
+    <MonthGrid year={year} month={month} summary={summary} dayHref={(iso) => `/minha-agenda?view=dia&date=${iso}`} />
   );
 }
