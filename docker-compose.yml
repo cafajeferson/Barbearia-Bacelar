@@ -20,10 +20,13 @@ services:
       - "127.0.0.1:3001:3000"
     env_file:
       - .env.production
-    depends_on:
-      - evolution-api
 
+  # WhatsApp (Evolution API) DESLIGADO: o cliente não vai usar por enquanto
+  # (decisão de 2026-11). Os dois serviços abaixo ficam no perfil
+  # "whatsapp" e NÃO sobem com o `docker compose up` normal. Para religar:
+  # `docker compose --env-file .env.production --profile whatsapp up -d`.
   evolution-api:
+    profiles: ["whatsapp"]
     # Nome/organização da imagem mudou (era atendai/evolution-api) — confira
     # https://github.com/evolution-foundation/evolution-api se este pull
     # voltar a falhar no futuro, o projeto pode migrar de novo.
@@ -51,6 +54,7 @@ services:
         condition: service_healthy
 
   evolution-db:
+    profiles: ["whatsapp"]
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
