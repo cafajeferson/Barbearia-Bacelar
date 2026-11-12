@@ -105,3 +105,16 @@ export async function getOwnWeekDataAction(input: { startDate: string }) {
   const ctx = await requireAuth();
   return service.getOwnWeekData({ ctx, startDate: new Date(input.startDate) });
 }
+
+export async function setProfessionalAdminAccessAction(input: { professionalId: string; admin: boolean }) {
+  const ctx = await requireAuth();
+  await service.setProfessionalAdminAccess({ ctx, ...input });
+  revalidatePath("/equipe");
+}
+
+export async function createOwnProfessionalProfileAction(input: { name: string; color?: string; unitIds: string[] }) {
+  const ctx = await requireAuth();
+  await service.createOwnProfessionalProfile({ ctx, ...input });
+  revalidatePath("/equipe");
+  revalidatePath("/agenda");
+}

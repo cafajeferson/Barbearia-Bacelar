@@ -34,7 +34,9 @@ function matches(pathname: string, prefixes: string[]) {
 
 export function isRouteAllowed(pathname: string, role: string | undefined): boolean {
   if (matches(pathname, ADMIN_PREFIXES)) return role === "ADMIN";
-  if (matches(pathname, PROFESSIONAL_PREFIXES)) return role === "PROFESSIONAL";
+  // ADMIN também: o admin que atende como barbeiro usa a Minha Agenda no
+  // "modo colaborador" (a página confere de novo pelo getAuthContext).
+  if (matches(pathname, PROFESSIONAL_PREFIXES)) return role === "PROFESSIONAL" || role === "ADMIN";
   if (matches(pathname, CLIENT_PREFIXES)) return role === "CLIENT";
   if (PUBLIC_PATHS.includes(pathname)) return true;
   return false;

@@ -34,8 +34,9 @@ test.describe("RBAC — acesso cruzado é bloqueado", () => {
     test.use({ storageState: "playwright/.auth/admin.json" });
 
     test("não acessa área do profissional nem do cliente (áreas exclusivas de outro papel)", async ({ page }) => {
+      // Sem o "modo colaborador" (admin que também é barbeiro), a Minha Agenda devolve pro dashboard.
       await page.goto("/minha-agenda");
-      await expect(page).toHaveURL(/\/login/);
+      await expect(page).toHaveURL(/\/dashboard/);
 
       await page.goto("/inicio");
       await expect(page).toHaveURL(/\/login/);

@@ -1,15 +1,18 @@
 import { redirect } from "next/navigation";
 import Image from "next/image";
-import { getAuthContext, getCurrentUserName } from "@/server/auth/getAuthContext";
+import { getAuthContext, getCurrentUserName, getRoleSwitch } from "@/server/auth/getAuthContext";
+import { RoleSwitchButton } from "@/shared/components/role-switch-button";
 import { LogoutButton } from "@/shared/components/logout-button";
 import { ProfessionalNav } from "@/shared/components/professional-nav";
 
 export default async function ProfessionalLayout({ children }: { children: React.ReactNode }) {
   const ctx = await getAuthContext();
-  if (!ctx || ctx.role !== "PROFESSIONAL") {
-    redirect("/login");
-  }
+  if (!ctx) redirect("/login");
+  // Admin fora do "modo colaborador" que caiu numa rota de profissional.
+  if (ctx.role === "ADMIN") redirect("/dashboard");
+  if (ctx.role !== "PROFESSIONAL") redirect("/login");
   const name = await getCurrentUserName();
+  const isAdminActing = (await getRoleSwitch())?.mode === "colaborador";
 
   return (
     <div className="min-h-screen bg-background">
@@ -21,7 +24,10 @@ export default async function ProfessionalLayout({ children }: { children: React
             <p className="text-xs text-muted-foreground">{name}</p>
           </div>
         </div>
-        <LogoutButton />
+        <div className="flex items-center gap-1">
+          {isAdminActing && <RoleSwitchButton to="admin" />}
+          <LogoutButton />
+        </div>
       </header>
       <ProfessionalNav />
       <div className="mx-auto max-w-3xl">{children}</div>

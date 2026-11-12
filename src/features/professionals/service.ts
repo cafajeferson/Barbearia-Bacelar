@@ -266,3 +266,73 @@ export async function listActiveProfessionalsForBooking(params: { ctx: Authentic
     }),
   );
 }
+
+/**
+ * Dá ou tira o acesso de admin de um colaborador (o dono que também corta
+ * cabelo usa uma conta só e troca de visão pelo menu). Atualiza o papel no
+ * banco e no Supabase Auth (app_metadata.role, lido pelo middleware).
+ */
+export async function setProfessionalAdminAccess(params: {
+  ctx: AuthenticatedContext;
+  professionalId: string;
+  admin: boolean;
+}) {
+  requireAdmin(params.ctx);
+  const user = await withAppContext(params.ctx, async (tx) => {
+    const professional = await tx.professional.findUniqueOrThrow({
+      where: { id: params.professionalId },
+      include: { user: true },
+    });
+    if (!params.admin && professional.userId === params.ctx.sessionUserId) {
+      throw new Error("Você não pode tirar o seu próprio acesso de admin.");
+    }
+    if (!params.admin) {
+      const admins = await tx.user.count({ where: { role: "ADMIN", active: true } });
+      if (admins <= 1) throw new Error("Precisa existir pelo menos um admin.");
+    }
+    return tx.user.update({
+      where: { id: professional.userId },
+      data: { role: params.admin ? "ADMIN" : "PROFESSIONAL" },
+    });
+  });
+  if (user.authUserId) {
+    const { error } = await createSupabaseAdminClient().auth.admin.updateUserById(user.authUserId, {
+      app_metadata: { role: user.role },
+    });
+    if (error) throw new Error(`Papel salvo, mas o login não foi atualizado: ${error.message}`);
+  }
+  invalidateCurrentUserCache();
+  return user;
+}
+
+/**
+ * "Também atendo como barbeiro": cria o cadastro de profissional ligado à
+ * própria conta do admin, que passa a aparecer na agenda e a poder trocar
+ * para a visão de colaborador.
+ */
+export async function createOwnProfessionalProfile(params: {
+  ctx: AuthenticatedContext;
+  name: string;
+  color?: string;
+  unitIds: string[];
+}) {
+  requireAdmin(params.ctx);
+  const professional = await withAppContext(params.ctx, async (tx) => {
+    const existing = await tx.professional.findUnique({ where: { userId: params.ctx.sessionUserId } });
+    if (existing) throw new Error("Sua conta já tem cadastro de colaborador.");
+    return tx.professional.create({
+      data: {
+        userId: params.ctx.sessionUserId,
+        name: params.name,
+        color: params.color ?? "#F5B301",
+        units: { create: params.unitIds.map((unitId) => ({ unitId })) },
+        // Mesmo expediente padrão da barbearia: segunda a sábado, 09h às 19h.
+        weeklyAvailability: {
+          create: [1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, startTime: "09:00", endTime: "19:00", active: true })),
+        },
+      },
+    });
+  });
+  invalidateCurrentUserCache();
+  return professional;
+}

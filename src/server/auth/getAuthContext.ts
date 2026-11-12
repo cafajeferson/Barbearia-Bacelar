@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { cookies } from "next/headers";
 import { createSupabaseServerClient } from "@/server/supabase/server";
 import { withAppContext, type AppContext } from "@/server/db/context";
 
@@ -31,7 +32,11 @@ type CurrentUser = {
  * isso pro caso comum (mesmo processo).
  */
 const TTL_MS = 30_000;
-const userCache = new Map<string, { value: CurrentUser | null; expiresAt: number }>();
+// Em globalThis: o Next pode carregar este módulo mais de uma vez (camada das
+// Server Actions e a das páginas); com um Map por cópia, invalidar numa
+// action não limpava o cache que a página lia logo depois.
+const globalForAuth = globalThis as unknown as { __bacelarUserCache?: Map<string, { value: CurrentUser | null; expiresAt: number }> };
+const userCache = (globalForAuth.__bacelarUserCache ??= new Map());
 
 export function invalidateCurrentUserCache(authUserId?: string) {
   if (authUserId) userCache.delete(authUserId);
@@ -93,9 +98,41 @@ const fetchCurrentUser = cache(async (): Promise<CurrentUser | null> => {
  * Toda rota de API e Server Action que precisa saber quem é o usuário deve
  * passar por aqui, nunca ler `role` direto do corpo da requisição.
  */
+/**
+ * Cookie do "modo colaborador": o admin que também atende como barbeiro
+ * alterna para a visão de profissional (Minha Agenda) sem trocar de conta.
+ * Só REBAIXA o acesso, e só vale para quem é ADMIN no banco e tem cadastro
+ * de profissional ligado à própria conta — em qualquer outra conta o cookie
+ * é ignorado, então forjá-lo não dá acesso a nada.
+ */
+export const PROFESSIONAL_MODE_COOKIE = "bacelar_modo";
+
+async function professionalModeOn(): Promise<boolean> {
+  try {
+    return (await cookies()).get(PROFESSIONAL_MODE_COOKIE)?.value === "colaborador";
+  } catch {
+    return false; // fora de uma requisição (scripts)
+  }
+}
+
+/**
+ * Para os menus: se a conta pode alternar entre admin e colaborador, e em
+ * qual visão está agora. null = conta sem a troca (admin sem cadastro de
+ * profissional, profissional comum, cliente).
+ */
+export async function getRoleSwitch(): Promise<{ mode: "admin" | "colaborador" } | null> {
+  const fresh = await fetchCurrentUser();
+  if (!fresh || !fresh.active || fresh.role !== "ADMIN" || !fresh.professional) return null;
+  return { mode: (await professionalModeOn()) ? "colaborador" : "admin" };
+}
+
 export async function getAuthContext(): Promise<AuthenticatedContext | null> {
   const fresh = await fetchCurrentUser();
   if (!fresh || !fresh.active) return null;
+
+  if (fresh.role === "ADMIN" && fresh.professional && (await professionalModeOn())) {
+    return { role: "PROFESSIONAL", userId: fresh.professional.id, sessionUserId: fresh.id };
+  }
 
   const userId =
     fresh.role === "PROFESSIONAL"
