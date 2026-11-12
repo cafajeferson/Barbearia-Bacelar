@@ -2,6 +2,7 @@ import type { AuthenticatedContext } from "@/server/auth/getAuthContext";
 import { withAppContext } from "@/server/db/context";
 import { formatBRL } from "@/shared/lib/format";
 import type { CommissionType } from "@/generated/prisma/enums";
+import type { Prisma } from "@/generated/prisma/client";
 
 function requireAdmin(ctx: AuthenticatedContext) {
   if (ctx.role !== "ADMIN") throw new Error("Só admin pode gerenciar comissões.");
@@ -263,22 +264,23 @@ export async function recalculateCommissions(params: { ctx: AuthenticatedContext
         products: { include: { product: { select: { commissionPct: true } } } },
       },
     });
+    // Junta as linhas e grava num único INSERT: uma ida ao banco por linha
+    // estourava o tempo da transação (10 s) num mês cheio (~700 atendimentos).
+    const rows: Prisma.CommissionEntryCreateManyInput[] = [];
     for (const a of appointments) {
       const pc = computeProductCommission(a, settings);
       if (pc.amount > 0) {
         const paidAtP = alreadyPaid.get(`${a.professionalId}|PRODUCT|${a.id}`);
-        await tx.commissionEntry.create({
-          data: {
-            professionalId: a.professionalId,
-            type: "PRODUCT",
-            appointmentId: a.id,
-            periodMonth: start,
-            baseAmount: pc.base,
-            pct: pc.pct,
-            calculatedAmount: pc.amount,
-            calculationFormula: pc.formula,
-            ...(paidAtP !== undefined ? { status: "PAID" as const, paidAt: paidAtP } : {}),
-          },
+        rows.push({
+          professionalId: a.professionalId,
+          type: "PRODUCT",
+          appointmentId: a.id,
+          periodMonth: start,
+          baseAmount: pc.base,
+          pct: pc.pct,
+          calculatedAmount: pc.amount,
+          calculationFormula: pc.formula,
+          ...(paidAtP !== undefined ? { status: "PAID" as const, paidAt: paidAtP } : {}),
         });
       }
       const c = computeServiceCommission(a, settings);
@@ -287,21 +289,20 @@ export async function recalculateCommissions(params: { ctx: AuthenticatedContext
       if (c.amount === 0) continue;
       const key = `${a.professionalId}|${c.type}|${a.id}`;
       const paidAt = alreadyPaid.get(key);
-      await tx.commissionEntry.create({
-        data: {
-          professionalId: a.professionalId,
-          type: c.type,
-          appointmentId: a.id,
-          periodMonth: start,
-          baseAmount: c.base,
-          pct: c.pct,
-          calculatedAmount: c.amount,
-          calculationFormula: c.formula,
-          // Recalcular não desfaz o que já foi pago ao barbeiro.
-          ...(paidAt !== undefined ? { status: "PAID" as const, paidAt } : {}),
-        },
+      rows.push({
+        professionalId: a.professionalId,
+        type: c.type,
+        appointmentId: a.id,
+        periodMonth: start,
+        baseAmount: c.base,
+        pct: c.pct,
+        calculatedAmount: c.amount,
+        calculationFormula: c.formula,
+        // Recalcular não desfaz o que já foi pago ao barbeiro.
+        ...(paidAt !== undefined ? { status: "PAID" as const, paidAt } : {}),
       });
     }
+    if (rows.length > 0) await tx.commissionEntry.createMany({ data: rows });
 
     // --- Comissão de assinaturas: pool dividido pelos atendimentos cobertos ---
     const totalAttendances = await writeSubscriptionCommissions(tx, start, end, (professionalId) => {
