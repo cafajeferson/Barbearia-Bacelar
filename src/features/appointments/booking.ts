@@ -49,6 +49,7 @@ export async function bookAppointmentAsClient(params: {
     if (subscription.creditsUsedThisPeriod >= subscription.plan.creditLimitPerMonth) {
       throw new Error("Limite de créditos do mês atingido para esta assinatura.");
     }
+    await assertSubscriptionCovers(ctx, subscription, params.serviceIds, params.scheduledDate);
   }
 
   const appointment = await createAppointment({
@@ -164,6 +165,58 @@ export async function validateCoupon(ctx: AuthenticatedContext, code: string, cl
 
 function findSubscription(ctx: AuthenticatedContext, subscriptionId: string) {
   return withAppContext(ctx, (tx) =>
-    tx.clientSubscription.findUnique({ where: { id: subscriptionId }, include: { plan: true } }),
+    tx.clientSubscription.findUnique({
+      where: { id: subscriptionId },
+      include: { plan: { include: { services: { select: { serviceId: true, service: { select: { name: true } } } } } } },
+    }),
   );
+}
+
+const WEEKDAY_NAMES = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+
+/**
+ * Regras do plano na hora de pagar com ele:
+ * 1. Só serviços incluídos no plano (um plano de corte não paga química).
+ * 2. Só nos dias da semana do plano, se ele tiver restrição de dias.
+ * 3. Mensalidade em dia: depois do vencimento, vale só durante a
+ *    tolerância das Regras do Sistema (padrão 5 dias).
+ */
+async function assertSubscriptionCovers(
+  ctx: AuthenticatedContext,
+  subscription: NonNullable<Awaited<ReturnType<typeof findSubscription>>>,
+  serviceIds: string[],
+  scheduledDate: Date,
+) {
+  const covered = new Set(subscription.plan.services.map((s) => s.serviceId));
+  if (covered.size > 0) {
+    const missing = serviceIds.filter((id) => !covered.has(id));
+    if (missing.length > 0) {
+      const names = await withAppContext(ctx, (tx) =>
+        tx.service.findMany({ where: { id: { in: missing } }, select: { name: true } }),
+      );
+      throw new Error(
+        `${names.map((n) => n.name).join(", ")} não ${names.length > 1 ? "estão incluídos" : "está incluído"} no ${subscription.plan.name}. Escolha "Pagar no local" ou tire esse serviço.`,
+      );
+    }
+  }
+
+  const weekday = new Date(scheduledDate.getUTCFullYear(), scheduledDate.getUTCMonth(), scheduledDate.getUTCDate()).getDay();
+  const days = subscription.plan.allowedWeekdays;
+  if (days.length > 0 && days.length < 7 && !days.includes(weekday)) {
+    throw new Error(
+      `O ${subscription.plan.name} vale só ${days.map((d) => WEEKDAY_NAMES[d]).join(", ")}. Escolha outro dia ou "Pagar no local".`,
+    );
+  }
+
+  if (subscription.nextBillingDate) {
+    const settings = await withAppContext(ctx, (tx) =>
+      tx.systemSettings.findUniqueOrThrow({ where: { id: 1 }, select: { subscriptionGraceDays: true } }),
+    );
+    const limit = new Date(subscription.nextBillingDate.getTime() + settings.subscriptionGraceDays * 86_400_000);
+    const today = new Date();
+    const todayUtc = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+    if (todayUtc > limit) {
+      throw new Error("A mensalidade do seu plano venceu. Regularize na barbearia para voltar a usar os créditos.");
+    }
+  }
 }

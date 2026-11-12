@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SearchBox } from "@/shared/components/search-box";
 import { ProductFormDialog } from "@/features/inventory/components/product-form-dialog";
+import { StockAdjustDialog } from "@/features/inventory/components/stock-adjust-dialog";
 import { formatBRL } from "@/shared/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -76,7 +77,7 @@ export default async function ProdutosPage({
               <TableHead>Estoque</TableHead>
               <TableHead>Comissão</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="w-10" />
+              <TableHead className="w-24" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -125,7 +126,8 @@ export default async function ProdutosPage({
                     {p.active ? "Ativo" : "Inativo"}
                   </Badge>
                 </TableCell>
-                <TableCell>
+                <TableCell className="whitespace-nowrap">
+                  <StockAdjustDialog productId={p.id} productName={p.name} stock={p.stock} />
                   <ProductFormDialog
                     product={{
                       ...p,

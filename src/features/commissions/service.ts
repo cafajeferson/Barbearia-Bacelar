@@ -111,6 +111,29 @@ async function writeSubscriptionCommissions(
   return totalAttendances;
 }
 
+type AppointmentWithProducts = {
+  professional: { commissionProductPct: unknown };
+  products: { quantity: number; priceAtBooking: unknown; product: { commissionPct: unknown } }[];
+};
+
+/**
+ * Comissão dos produtos que o cliente levou no atendimento: % do próprio
+ * produto, senão o % de produto do profissional, senão o padrão das Regras
+ * (10%). Vários produtos com % diferentes viram uma média ponderada pelo valor.
+ */
+function computeProductCommission(a: AppointmentWithProducts, settings: { defaultCommissionProductPct: unknown }) {
+  const fallbackPct = Number(a.professional.commissionProductPct ?? settings.defaultCommissionProductPct);
+  let base = 0;
+  let weighted = 0;
+  for (const p of a.products) {
+    const value = p.quantity * Number(p.priceAtBooking);
+    base += value;
+    weighted += value * Number(p.product.commissionPct ?? fallbackPct);
+  }
+  const pct = base > 0 ? weighted / base : fallbackPct;
+  return { base, pct, amount: (base * pct) / 100, formula: `${formatBRL(base)} em produtos × ${Number(pct.toFixed(2))}%` };
+}
+
 /**
  * Mantém a comissão de UM atendimento em dia, na hora: concluiu -> a linha
  * aparece em Comissões e no Fechamento sem ninguém precisar clicar em
@@ -126,11 +149,15 @@ export async function syncAppointmentCommission(appointmentId: string) {
   return withAppContext(SYSTEM, async (tx) => {
     const a = await tx.appointment.findUnique({
       where: { id: appointmentId },
-      include: { professional: true, services: { include: { service: true } } },
+      include: {
+        professional: true,
+        services: { include: { service: true } },
+        products: { include: { product: { select: { commissionPct: true } } } },
+      },
     });
     if (!a) return;
     const existing = await tx.commissionEntry.findMany({
-      where: { appointmentId, type: { in: ["SERVICE", "WALK_IN"] } },
+      where: { appointmentId, type: { in: ["SERVICE", "WALK_IN", "PRODUCT"] } },
     });
     // Mês do atendimento (coluna "somente data": componentes em UTC).
     const periodMonth = new Date(a.scheduledDate.getUTCFullYear(), a.scheduledDate.getUTCMonth(), 1);
@@ -155,6 +182,21 @@ export async function syncAppointmentCommission(appointmentId: string) {
               pct: c.pct,
               calculatedAmount: c.amount,
               calculationFormula: c.formula,
+            },
+          });
+        }
+        const pc = computeProductCommission(a, settings);
+        if (pc.amount > 0) {
+          await tx.commissionEntry.create({
+            data: {
+              professionalId: a.professionalId,
+              type: "PRODUCT",
+              appointmentId: a.id,
+              periodMonth,
+              baseAmount: pc.base,
+              pct: pc.pct,
+              calculatedAmount: pc.amount,
+              calculationFormula: pc.formula,
             },
           });
         }
@@ -215,9 +257,30 @@ export async function recalculateCommissions(params: { ctx: AuthenticatedContext
     // --- Comissão de serviços: uma linha por atendimento concluído ---
     const appointments = await tx.appointment.findMany({
       where: { status: "COMPLETED", scheduledDate: { gte: start, lt: end } },
-      include: { professional: true, services: { include: { service: true } } },
+      include: {
+        professional: true,
+        services: { include: { service: true } },
+        products: { include: { product: { select: { commissionPct: true } } } },
+      },
     });
     for (const a of appointments) {
+      const pc = computeProductCommission(a, settings);
+      if (pc.amount > 0) {
+        const paidAtP = alreadyPaid.get(`${a.professionalId}|PRODUCT|${a.id}`);
+        await tx.commissionEntry.create({
+          data: {
+            professionalId: a.professionalId,
+            type: "PRODUCT",
+            appointmentId: a.id,
+            periodMonth: start,
+            baseAmount: pc.base,
+            pct: pc.pct,
+            calculatedAmount: pc.amount,
+            calculationFormula: pc.formula,
+            ...(paidAtP !== undefined ? { status: "PAID" as const, paidAt: paidAtP } : {}),
+          },
+        });
+      }
       const c = computeServiceCommission(a, settings);
       // Atendimento pago com o plano tem total R$ 0 — a comissão dele é a
       // de assinatura (rateio abaixo), não uma linha de serviço zerada.
@@ -254,7 +317,7 @@ export async function listServiceCommissions(params: { ctx: AuthenticatedContext
   const { start } = monthRange(params.periodMonth);
   return withAppContext(params.ctx, async (tx) => {
     const entries = await tx.commissionEntry.findMany({
-      where: { periodMonth: start, type: { in: ["SERVICE", "WALK_IN"] } },
+      where: { periodMonth: start, type: { in: ["SERVICE", "WALK_IN", "PRODUCT"] } },
       include: { professional: true },
       orderBy: { createdAt: "asc" },
     });
@@ -306,7 +369,7 @@ export async function markCommissionsPaid(params: {
 }) {
   requireAdmin(params.ctx);
   const { start } = monthRange(params.periodMonth);
-  const types: CommissionType[] = params.type === "SERVICE" ? ["SERVICE", "WALK_IN"] : ["SUBSCRIPTION"];
+  const types: CommissionType[] = params.type === "SERVICE" ? ["SERVICE", "WALK_IN", "PRODUCT"] : ["SUBSCRIPTION"];
   return withAppContext(params.ctx, (tx) =>
     tx.commissionEntry.updateMany({
       where: { professionalId: params.professionalId, periodMonth: start, type: { in: types }, status: "PENDING" },

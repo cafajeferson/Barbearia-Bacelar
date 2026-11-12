@@ -48,12 +48,17 @@ export async function adjustStock(params: {
   delta: number;
 }) {
   requireAdmin(params.ctx);
-  return withAppContext(params.ctx, (tx) =>
-    tx.product.update({
+  if (!Number.isInteger(params.delta) || params.delta === 0) throw new Error("Informe uma quantidade inteira diferente de zero.");
+  return withAppContext(params.ctx, async (tx) => {
+    const product = await tx.product.findUniqueOrThrow({ where: { id: params.productId }, select: { stock: true, name: true } });
+    if (product.stock + params.delta < 0) {
+      throw new Error(`Estoque de ${product.name} ficaria negativo (tem ${product.stock}).`);
+    }
+    return tx.product.update({
       where: { id: params.productId },
       data: { stock: { increment: params.delta } },
-    }),
-  );
+    });
+  });
 }
 
 export async function listProducts(params: {

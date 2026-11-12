@@ -27,10 +27,10 @@ export default async function ConfiguracoesPage() {
           {units.map((u) => (
             <Card key={u.id} className="flex items-start justify-between gap-3 p-4">
               <div className="min-w-0">
-                <p className="flex flex-wrap items-center gap-2 font-medium">
+                <div className="flex flex-wrap items-center gap-2 font-medium">
                   {u.name}
                   <Badge variant={u.active ? "default" : "secondary"}>{u.active ? "Ativa" : "Desativada"}</Badge>
-                </p>
+                </div>
                 <p className="truncate text-sm text-muted-foreground">{u.address}</p>
                 <p className="text-xs text-muted-foreground">
                   {u.phone ? `${u.phone} · ` : ""}

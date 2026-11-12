@@ -28,6 +28,15 @@ npx prisma migrate deploy && npx prisma generate
 
 Sempre rodar tsc, lint e o e2e antes de publicar, e a faxina depois do e2e.
 
+Verificações de regra de negócio (usam o banco e limpam o que criam):
+
+```bash
+npx tsx --require ./scripts/react-cache-shim.cjs scripts/audit-admin.ts          # regras, catálogo, produtos/estoque, comissões, agenda, planos, cupons, clientes
+npx tsx --require ./scripts/react-cache-shim.cjs scripts/audit-subscriptions.ts  # ciclo completo da assinatura
+```
+
+`prisma/pending/` guarda migrations ainda NÃO aprovadas pelo dono (o Prisma não lê essa pasta).
+
 ## Atenção: não existe banco de desenvolvimento
 
 O `.env` local aponta para o banco de **produção**. Todo script, teste e `npm run dev` lê e grava em dados reais. Confirmar com o dono antes de qualquer coisa que escreva no banco quando a barbearia já estiver usando o sistema; migrations alteram produção na hora.

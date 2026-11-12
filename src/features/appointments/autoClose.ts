@@ -1,6 +1,7 @@
 import type { AuthenticatedContext } from "@/server/auth/getAuthContext";
 import { withAppContext } from "@/server/db/context";
 import { syncAppointmentCommission } from "@/features/commissions/service";
+import { moveStockForAppointment } from "./stateMachine";
 
 const SYSTEM = { role: "ADMIN" as const, userId: null };
 const OPEN = ["SCHEDULED", "CONFIRMED", "IN_PROGRESS"] as const;
@@ -23,6 +24,7 @@ export async function closeAppointmentsAsSystem(appointmentIds: string[], reason
       const appt = await tx.appointment.findUnique({ where: { id }, select: { status: true } });
       if (!appt || !OPEN.includes(appt.status as (typeof OPEN)[number])) return false;
       await tx.appointment.update({ where: { id }, data: { status: "COMPLETED", closedBySystem: true } });
+      await moveStockForAppointment(tx, id, "out");
       await tx.$executeRaw`
         INSERT INTO "AppointmentStatusLog" (id, "appointmentId", "fromStatus", "toStatus", "changedBy", "isOverride", "reason", "createdAt")
         VALUES (gen_random_uuid()::text, ${id}::text, ${appt.status}::"AppointmentStatus", 'COMPLETED'::"AppointmentStatus", 'system'::text, true, ${reason}, now())

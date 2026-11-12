@@ -88,6 +88,13 @@ export async function transitionAppointmentStatus(params: {
       assertRoleCanTransition(ctx, toStatus);
     }
 
+    // Estoque dos produtos pedidos no atendimento.
+    if (toStatus === "COMPLETED" && appointment.status !== "COMPLETED") {
+      await moveStockForAppointment(tx, appointmentId, "out");
+    } else if (appointment.status === "COMPLETED" && toStatus !== "COMPLETED") {
+      await moveStockForAppointment(tx, appointmentId, "back");
+    }
+
     const isCancelling = toStatus === "CANCELLED";
     const updated = await tx.appointment.update({
       where: { id: appointmentId },
@@ -154,6 +161,17 @@ export async function transitionAppointmentStatus(params: {
     return { updated, wasCompleted: appointment.status === "COMPLETED" };
   });
 
+  // Cancelou um horário pago com o plano: o crédito volta para o cliente
+  // (falta não devolve — o horário ficou reservado). Roda como sistema
+  // porque o profissional não pode alterar a assinatura do cliente.
+  if (toStatus === "CANCELLED") {
+    try {
+      await returnPlanCredit(appointmentId);
+    } catch (err) {
+      console.error("[subscriptions] crédito do plano não devolvido", appointmentId, err);
+    }
+  }
+
   // Comissão na hora: concluiu -> aparece; deixou de estar concluído -> sai.
   // Chamada irmã (fora da transação acima, com contexto próprio de sistema);
   // se falhar, a mudança de status já valeu e o "Recalcular" corrige depois.
@@ -166,4 +184,37 @@ export async function transitionAppointmentStatus(params: {
   }
 
   return result.updated;
+}
+
+/**
+ * Estoque acompanha o atendimento: ao CONCLUIR, os produtos que o cliente
+ * levou saem do estoque; se um atendimento concluído for excluído/reaberto,
+ * eles voltam. Roda dentro da mesma transação da mudança de status.
+ */
+export async function moveStockForAppointment(
+  tx: Parameters<Parameters<typeof withAppContext>[1]>[0],
+  appointmentId: string,
+  direction: "out" | "back",
+) {
+  const items = await tx.appointmentProduct.findMany({ where: { appointmentId }, select: { productId: true, quantity: true } });
+  for (const it of items) {
+    await tx.product.update({
+      where: { id: it.productId },
+      data: { stock: direction === "out" ? { decrement: it.quantity } : { increment: it.quantity } },
+    });
+  }
+}
+
+/** Devolve o crédito do plano usado num agendamento (idempotente: o uso é apagado). */
+export async function returnPlanCredit(appointmentId: string) {
+  await withAppContext({ role: "ADMIN", userId: null }, async (tx) => {
+    const usages = await tx.subscriptionCreditUsage.findMany({ where: { appointmentId } });
+    for (const u of usages) {
+      await tx.clientSubscription.updateMany({
+        where: { id: u.clientSubscriptionId, creditsUsedThisPeriod: { gte: u.creditsUsed } },
+        data: { creditsUsedThisPeriod: { decrement: u.creditsUsed } },
+      });
+    }
+    if (usages.length > 0) await tx.subscriptionCreditUsage.deleteMany({ where: { appointmentId } });
+  });
 }

@@ -51,9 +51,19 @@ export function ProfessionalCommissionRow({
 
   return (
     <div className="border-b last:border-b-0">
-      <button
-        className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3 text-left"
+      {/* div com papel de botão (não <button>): dentro dela fica o botão
+          "Marcar como pago", e botão dentro de botão é HTML inválido. */}
+      <div
+        role="button"
+        tabIndex={0}
+        className="flex w-full cursor-pointer flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3 text-left"
         onClick={() => setExpanded((e) => !e)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setExpanded((v) => !v);
+          }
+        }}
       >
         <span className="flex items-center gap-2 font-medium">
           {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -77,7 +87,7 @@ export function ProfessionalCommissionRow({
             </Button>
           )}
         </span>
-      </button>
+      </div>
       {expanded && (
         <div className="space-y-1 bg-muted/30 px-4 py-2">
           {entries.map((e) => (
