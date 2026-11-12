@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Lock, LockOpen } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -52,6 +53,17 @@ function snap(minutes: number) {
   return Math.round(minutes / SNAP_MINUTES) * SNAP_MINUTES;
 }
 
+type PendingChange = {
+  appointmentId: string;
+  clientName: string;
+  fromProfessionalId: string;
+  toProfessionalId: string;
+  fromStart: string;
+  fromEnd: string;
+  toStart: string;
+  toEnd: string;
+} & ({ kind: "move"; professionalId: string; startTime: string } | { kind: "resize"; durationMinutes: number });
+
 type PendingForce =
   | { kind: "move"; appointmentId: string; professionalId: string; startTime: string }
   | { kind: "resize"; appointmentId: string; durationMinutes: number };
@@ -73,6 +85,13 @@ export function CalendarBoard({
   const router = useRouter();
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [pendingForce, setPendingForce] = useState<PendingForce | null>(null);
+  // Cadeado: a agenda abre TRAVADA. Travada, rolar a tela por cima de um
+  // cartão rola a página (não arrasta o cliente) e tocar só abre os detalhes;
+  // para mover ou mudar a duração é preciso destravar antes. Depois de cada
+  // mudança confirmada, trava de novo sozinha.
+  const [locked, setLocked] = useState(true);
+  // Mudança feita arrastando/esticando: só vale depois de confirmar no aviso.
+  const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
   const [reason, setReason] = useState("");
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -82,6 +101,8 @@ export function CalendarBoard({
   const resizingRef = useRef<{ appointmentId: string; startY: number; baseDuration: number } | null>(null);
   // Preview local ao arrastar (mover) — mesma ideia do resize.
   const [movePreview, setMovePreview] = useState<{ appointmentId: string; professionalId: string; top: number } | null>(null);
+  const lastMoveRef = useRef<{ professionalId: string; top: number } | null>(null);
+  const lastResizeRef = useRef<number | null>(null);
   const movingRef = useRef<{
     appointmentId: string;
     startX: number;
@@ -149,7 +170,7 @@ export function CalendarBoard({
   // admin no desktop com mouse. Um toque parado (sem mover) abre os
   // detalhes; só vira "arrastar" depois de passar de um limiar de movimento.
   function startMove(e: React.PointerEvent, appointment: AgendaData["appointments"][number]) {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || locked) return;
     const cardEl = e.currentTarget as HTMLElement;
     const columnEl = cardEl.closest<HTMLElement>("[data-professional-id]");
     if (!columnEl) return;
@@ -178,6 +199,7 @@ export function CalendarBoard({
       const targetRect = (targetEl ?? columnEl)!.getBoundingClientRect();
       const top = Math.max(0, ev.clientY - targetRect.top - ctx.grabOffsetY);
       setDragOverCol(targetProfessionalId);
+      lastMoveRef.current = { professionalId: targetProfessionalId, top };
       setMovePreview({ appointmentId: ctx.appointmentId, professionalId: targetProfessionalId, top });
     }
 
@@ -195,28 +217,35 @@ export function CalendarBoard({
         setMovePreview(null);
         return;
       }
-      setMovePreview((preview) => {
-        if (preview) {
-          const minutes = snap(DAY_START + preview.top / PX_PER_MINUTE);
-          const startTime = minutesToTime(minutes);
-          if (startTime !== ctx.originalStartTime || preview.professionalId !== ctx.originalProfessionalId) {
-            doReschedule({ appointmentId: ctx.appointmentId, professionalId: preview.professionalId, startTime }).catch(
-              (err) => {
-                if (isConflictMessage(err) && canForceOverlap) {
-                  setPendingForce({
-                    kind: "move",
-                    appointmentId: ctx.appointmentId,
-                    professionalId: preview.professionalId,
-                    startTime,
-                  });
-                } else {
-                  toast.error(err instanceof Error ? err.message : "Erro ao reagendar.");
-                }
-              },
-            );
-          }
-        }
-        return null;
+      const preview = lastMoveRef.current;
+      lastMoveRef.current = null;
+      const appt = data.appointments.find((x) => x.id === ctx.appointmentId);
+      if (!preview || !appt) {
+        setMovePreview(null);
+        return;
+      }
+      const minutes = snap(DAY_START + preview.top / PX_PER_MINUTE);
+      const startTime = minutesToTime(minutes);
+      if (startTime === ctx.originalStartTime && preview.professionalId === ctx.originalProfessionalId) {
+        setMovePreview(null);
+        return;
+      }
+      const duration = timeToMinutes(appt.endTime) - timeToMinutes(appt.startTime);
+      // Não salva ainda: mostra o aviso com o antes/depois e espera confirmar.
+      // O cartão fica na posição nova (encaixada) enquanto o aviso está aberto.
+      setMovePreview({ appointmentId: ctx.appointmentId, professionalId: preview.professionalId, top: (minutes - DAY_START) * PX_PER_MINUTE });
+      setPendingChange({
+        kind: "move",
+        appointmentId: ctx.appointmentId,
+        clientName: appt.client.name,
+        fromProfessionalId: ctx.originalProfessionalId,
+        toProfessionalId: preview.professionalId,
+        fromStart: appt.startTime,
+        fromEnd: appt.endTime,
+        toStart: startTime,
+        toEnd: minutesToTime(minutes + duration),
+        professionalId: preview.professionalId,
+        startTime,
       });
     }
 
@@ -237,6 +266,7 @@ export function CalendarBoard({
   function startResize(e: React.PointerEvent, appointmentId: string, baseDuration: number) {
     e.preventDefault();
     e.stopPropagation();
+    if (locked) return;
     resizingRef.current = { appointmentId, startY: e.clientY, baseDuration };
     setResizePreview({ appointmentId, durationMinutes: baseDuration });
 
@@ -245,6 +275,7 @@ export function CalendarBoard({
       if (!ctx) return;
       const deltaMinutes = (ev.clientY - ctx.startY) / PX_PER_MINUTE;
       const duration = Math.max(MIN_DURATION, snap(ctx.baseDuration + deltaMinutes));
+      lastResizeRef.current = duration;
       setResizePreview({ appointmentId: ctx.appointmentId, durationMinutes: duration });
     }
 
@@ -255,30 +286,67 @@ export function CalendarBoard({
       const ctx = resizingRef.current;
       resizingRef.current = null;
       if (!ctx) return;
-      setResizePreview((preview) => {
-        if (preview && preview.durationMinutes !== ctx.baseDuration) {
-          doReschedule({ appointmentId: ctx.appointmentId, durationMinutes: preview.durationMinutes }).catch(
-            (err) => {
-              if (isConflictMessage(err) && canForceOverlap) {
-                setPendingForce({
-                  kind: "resize",
-                  appointmentId: ctx.appointmentId,
-                  durationMinutes: preview.durationMinutes,
-                });
-              } else {
-                toast.error(err instanceof Error ? err.message : "Erro ao redimensionar.");
-              }
-              setResizePreview(null);
-            },
-          );
-        }
-        return null;
+      const duration = lastResizeRef.current;
+      lastResizeRef.current = null;
+      const appt = data.appointments.find((x) => x.id === ctx.appointmentId);
+      if (duration === null || duration === ctx.baseDuration || !appt) {
+        setResizePreview(null);
+        return;
+      }
+      setPendingChange({
+        kind: "resize",
+        appointmentId: ctx.appointmentId,
+        clientName: appt.client.name,
+        fromProfessionalId: appt.professionalId,
+        toProfessionalId: appt.professionalId,
+        fromStart: appt.startTime,
+        fromEnd: appt.endTime,
+        toStart: appt.startTime,
+        toEnd: minutesToTime(timeToMinutes(appt.startTime) + duration),
+        durationMinutes: duration,
       });
     }
 
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
+  }
+
+  function clearPreviews() {
+    setMovePreview(null);
+    setResizePreview(null);
+  }
+
+  function cancelPendingChange() {
+    setPendingChange(null);
+    clearPreviews();
+  }
+
+  function confirmPendingChange() {
+    const change = pendingChange;
+    if (!change) return;
+    setPendingChange(null);
+    const input =
+      change.kind === "move"
+        ? { appointmentId: change.appointmentId, professionalId: change.professionalId, startTime: change.startTime }
+        : { appointmentId: change.appointmentId, durationMinutes: change.durationMinutes };
+    doReschedule(input)
+      .then(() => {
+        clearPreviews();
+        setLocked(true);
+      })
+      .catch((err) => {
+        if (isConflictMessage(err) && canForceOverlap) {
+          setPendingForce(
+            change.kind === "move"
+              ? { kind: "move", appointmentId: change.appointmentId, professionalId: change.professionalId, startTime: change.startTime }
+              : { kind: "resize", appointmentId: change.appointmentId, durationMinutes: change.durationMinutes },
+          );
+        } else {
+          toast.error(err instanceof Error ? err.message : "Não foi possível mudar o agendamento.");
+          clearPreviews();
+        }
+      });
   }
 
   function handleForceConfirm() {
@@ -297,8 +365,9 @@ export function CalendarBoard({
             force: { reason },
           });
     promise
+      .then(() => setLocked(true))
       .catch((err) => toast.error(err instanceof Error ? err.message : "Erro ao forçar sobreposição."))
-      .finally(() => setResizePreview(null));
+      .finally(clearPreviews);
   }
 
   const selected = selectedId ? data.appointments.find((a) => a.id === selectedId) : null;
@@ -336,6 +405,20 @@ export function CalendarBoard({
           onClick={() => setHidden(new Set(data.professionals.map((p) => p.id)))}
         >
           Nenhum
+        </button>
+        <button
+          type="button"
+          onClick={() => setLocked((v) => !v)}
+          aria-pressed={!locked}
+          title={locked ? "Destravar para mover ou mudar a duração dos agendamentos" : "Travar a agenda"}
+          className={`ml-auto flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+            locked
+              ? "border-border text-muted-foreground hover:bg-accent"
+              : "border-warning bg-warning/15 text-warning"
+          }`}
+        >
+          {locked ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
+          {locked ? "Agenda travada" : "Edição liberada — toque para travar"}
         </button>
       </div>
 
@@ -427,8 +510,15 @@ export function CalendarBoard({
                   <div
                     key={a.id}
                     onPointerDown={(e) => startMove(e, a)}
-                    onClick={(e) => e.stopPropagation()}
-                    className={`group absolute left-0.5 right-0.5 z-10 cursor-grab touch-none rounded-md border p-1 text-[11px] leading-tight active:cursor-grabbing ${inProgress ? "ring-2 ring-offset-1 ring-offset-background" : ""} ${isMoving ? "opacity-70 shadow-lg" : ""}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Travada: o clique é só "abrir detalhes" (destravada isso é
+                      // feito no soltar do arrastar, em startMove).
+                      if (locked) setSelectedId(a.id);
+                    }}
+                    className={`group absolute left-0.5 right-0.5 z-10 rounded-md border p-1 text-[11px] leading-tight ${
+                      locked ? "cursor-pointer" : "cursor-grab touch-none active:cursor-grabbing"
+                    } ${inProgress ? "ring-2 ring-offset-1 ring-offset-background" : ""} ${isMoving ? "opacity-70 shadow-lg" : ""}`}
                     style={{
                       top,
                       height: cardHeight,
@@ -483,14 +573,16 @@ export function CalendarBoard({
                     {/* Alça de redimensionar — só na borda inferior, estilo Booksy. Sempre
                         visível (não só no hover): em toque não existe hover, e a alça
                         escondida ficava impossível de pegar com o dedo. */}
-                    <div
-                      onPointerDown={(e) =>
-                        startResize(e, a.id, timeToMinutes(a.endTime) - timeToMinutes(a.startTime))
-                      }
-                      className="absolute inset-x-0 bottom-0 flex h-4 touch-none cursor-ns-resize items-end justify-center pb-0.5"
-                    >
-                      <div className="h-1 w-8 rounded-full bg-foreground/40" />
-                    </div>
+                    {!locked && (
+                      <div
+                        onPointerDown={(e) =>
+                          startResize(e, a.id, timeToMinutes(a.endTime) - timeToMinutes(a.startTime))
+                        }
+                        className="absolute inset-x-0 bottom-0 flex h-4 touch-none cursor-ns-resize items-end justify-center pb-0.5"
+                      >
+                        <div className="h-1 w-8 rounded-full bg-foreground/40" />
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -520,7 +612,43 @@ export function CalendarBoard({
         onClose={() => setSelectedId(null)}
       />
 
-      <Dialog open={!!pendingForce} onOpenChange={(open) => !open && (setPendingForce(null), setResizePreview(null))}>
+      <Dialog open={!!pendingChange} onOpenChange={(open) => !open && cancelPendingChange()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar mudança</DialogTitle>
+          </DialogHeader>
+          {pendingChange && (
+            <div className="space-y-3">
+              <p className="text-sm">
+                Agendamento de <span className="font-semibold">{pendingChange.clientName}</span>
+              </p>
+              <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2 rounded-lg border p-3 text-sm">
+                <span className="text-xs uppercase text-muted-foreground">Antes</span>
+                <span className="text-muted-foreground line-through">
+                  {pendingChange.fromStart}–{pendingChange.fromEnd} ·{" "}
+                  {data.professionals.find((p) => p.id === pendingChange.fromProfessionalId)?.name}
+                </span>
+                <span className="text-xs uppercase text-primary">Depois</span>
+                <span className="font-semibold text-primary">
+                  {pendingChange.toStart}–{pendingChange.toEnd} ·{" "}
+                  {data.professionals.find((p) => p.id === pendingChange.toProfessionalId)?.name}
+                </span>
+              </div>
+              {pendingChange.fromProfessionalId !== pendingChange.toProfessionalId && (
+                <p className="text-xs text-warning">Atenção: o atendimento muda de profissional.</p>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={cancelPendingChange}>
+              Cancelar
+            </Button>
+            <Button onClick={confirmPendingChange}>Confirmar mudança</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!pendingForce} onOpenChange={(open) => !open && (setPendingForce(null), clearPreviews())}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Horário em conflito</DialogTitle>
@@ -543,7 +671,7 @@ export function CalendarBoard({
               variant="outline"
               onClick={() => {
                 setPendingForce(null);
-                setResizePreview(null);
+                clearPreviews();
               }}
             >
               Cancelar
