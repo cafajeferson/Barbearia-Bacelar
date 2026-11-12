@@ -1,18 +1,18 @@
 import { redirect } from "next/navigation";
 import Image from "next/image";
-import { getAuthContext, getCurrentUserName, getRoleSwitch } from "@/server/auth/getAuthContext";
-import { RoleSwitchButton } from "@/shared/components/role-switch-button";
+import { getAuthContext, getCurrentUserProfile, getRoleSwitch } from "@/server/auth/getAuthContext";
+import { ProfileMenu } from "@/shared/components/profile-menu";
 import { LogoutButton } from "@/shared/components/logout-button";
 import { ProfessionalNav } from "@/shared/components/professional-nav";
 
 export default async function ProfessionalLayout({ children }: { children: React.ReactNode }) {
   const ctx = await getAuthContext();
   if (!ctx) redirect("/login");
-  // Admin fora do "modo colaborador" que caiu numa rota de profissional.
+  // Admin que não está no perfil Profissional e caiu numa rota de profissional.
   if (ctx.role === "ADMIN") redirect("/dashboard");
   if (ctx.role !== "PROFESSIONAL") redirect("/login");
-  const name = await getCurrentUserName();
-  const isAdminActing = (await getRoleSwitch())?.mode === "colaborador";
+  const [profile, profileSwitch] = await Promise.all([getCurrentUserProfile(), getRoleSwitch()]);
+  const name = profile?.name ?? null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -24,10 +24,12 @@ export default async function ProfessionalLayout({ children }: { children: React
             <p className="text-xs text-muted-foreground">{name}</p>
           </div>
         </div>
-        <div className="flex items-center gap-1">
-          {isAdminActing && <RoleSwitchButton to="admin" />}
+        {/* Menu com "Trocar perfil" (Profissional / Cliente; o admin também volta para Administrador). */}
+        {profileSwitch ? (
+          <ProfileMenu name={name ?? "Admin"} email={profile?.email ?? ""} avatarUrl={profile?.avatarUrl ?? null} profileSwitch={profileSwitch} variant="compact" />
+        ) : (
           <LogoutButton />
-        </div>
+        )}
       </header>
       <ProfessionalNav />
       <div className="mx-auto max-w-3xl">{children}</div>

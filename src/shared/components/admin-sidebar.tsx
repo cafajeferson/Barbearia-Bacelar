@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { logoutAction } from "@/server/auth/actions";
-import { RoleSwitchButton } from "./role-switch-button";
+import { ProfileMenu, type ProfileSwitch } from "./profile-menu";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -20,7 +19,6 @@ import {
   Ticket,
   Clock,
   Settings,
-  LogOut,
   Menu,
   Wallet,
   BarChart3,
@@ -100,7 +98,7 @@ function NavLink({
 }
 
 /** Conteúdo do menu (logo, links, usuário) — o mesmo na barra fixa do desktop e na gaveta do celular. */
-function SidebarBody({ userName, userRole, canSwitch }: { userName: string; userRole: string; canSwitch?: boolean }) {
+function SidebarBody({ userName, userEmail, avatarUrl, profileSwitch }: { userName: string; userEmail: string; avatarUrl?: string | null; profileSwitch: ProfileSwitch | null }) {
   const pathname = usePathname();
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
@@ -136,23 +134,8 @@ function SidebarBody({ userName, userRole, canSwitch }: { userName: string; user
         ))}
       </nav>
 
-      {canSwitch && (
-        <div className="border-t border-sidebar-border px-4 pt-3">
-          <RoleSwitchButton to="colaborador" className="w-full justify-center" />
-        </div>
-      )}
-      <div className="flex items-center justify-between gap-2 border-t border-sidebar-border px-4 py-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-sidebar-foreground">{userName}</p>
-          <p className="truncate text-xs text-sidebar-foreground/50">{userRole}</p>
-        </div>
-        <button
-          onClick={() => logoutAction()}
-          className="rounded-md p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-destructive"
-          title="Sair"
-        >
-          <LogOut className="h-4 w-4" />
-        </button>
+      <div className="border-t border-sidebar-border px-3 py-2">
+        <ProfileMenu name={userName} email={userEmail} avatarUrl={avatarUrl} profileSwitch={profileSwitch} />
       </div>
     </>
   );
@@ -163,16 +146,16 @@ function SidebarBody({ userName, userRole, canSwitch }: { userName: string; user
  * dos ~390 da tela e espremia todo o conteúdo numa tira; lá o menu vira
  * uma gaveta aberta pelo botão do topo (AdminMobileNav).
  */
-export function AdminSidebar({ userName, userRole, canSwitch }: { userName: string; userRole: string; canSwitch?: boolean }) {
+export function AdminSidebar({ userName, userEmail, avatarUrl, profileSwitch }: { userName: string; userEmail: string; avatarUrl?: string | null; profileSwitch: ProfileSwitch | null }) {
   return (
     <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex print:!hidden">
-      <SidebarBody userName={userName} userRole={userRole} canSwitch={canSwitch} />
+      <SidebarBody userName={userName} userEmail={userEmail} avatarUrl={avatarUrl} profileSwitch={profileSwitch} />
     </aside>
   );
 }
 
 /** Botão de menu + gaveta lateral pro admin no celular/tablet (abaixo de `lg`). */
-export function AdminMobileNav({ userName, userRole, canSwitch }: { userName: string; userRole: string; canSwitch?: boolean }) {
+export function AdminMobileNav({ userName, userEmail, avatarUrl, profileSwitch }: { userName: string; userEmail: string; avatarUrl?: string | null; profileSwitch: ProfileSwitch | null }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
@@ -191,7 +174,7 @@ export function AdminMobileNav({ userName, userRole, canSwitch }: { userName: st
       </SheetTrigger>
       <SheetContent side="left" className="flex w-72 max-w-[85vw] flex-col gap-0 border-sidebar-border bg-sidebar p-0">
         <SheetTitle className="sr-only">Menu</SheetTitle>
-        <SidebarBody userName={userName} userRole={userRole} canSwitch={canSwitch} />
+        <SidebarBody userName={userName} userEmail={userEmail} avatarUrl={avatarUrl} profileSwitch={profileSwitch} />
       </SheetContent>
     </Sheet>
   );

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getAuthContext, getCurrentUserProfile } from "@/server/auth/getAuthContext";
+import { getAuthContext, getCurrentUserProfile, getRoleSwitch } from "@/server/auth/getAuthContext";
 import { withAppContext } from "@/server/db/context";
 import { ttlCached } from "@/server/db/ttl-cache";
 import { ClientNav, ClientBottomNav } from "@/shared/components/client-nav";
@@ -17,9 +17,13 @@ export default async function ClientLayout({ children }: { children: React.React
     ),
     getCurrentUserProfile(),
   ]);
-  if (!ctx || ctx.role !== "CLIENT") {
-    redirect("/login");
-  }
+  if (!ctx) redirect("/login");
+  // Admin / profissional fora do perfil Cliente que caiu numa rota do app do cliente.
+  if (ctx.role === "ADMIN") redirect("/dashboard");
+  if (ctx.role === "PROFESSIONAL") redirect("/minha-agenda");
+  if (ctx.role !== "CLIENT") redirect("/login");
+  // Admin / profissional no perfil Cliente têm "Trocar perfil" (null para cliente comum).
+  const profileSwitch = await getRoleSwitch();
 
   return (
     <div className="min-h-screen bg-background">
@@ -27,6 +31,8 @@ export default async function ClientLayout({ children }: { children: React.React
         unitName={unit?.name ?? "Bacelar"}
         userName={profile?.name ?? null}
         userEmail={profile?.email ?? ""}
+        avatarUrl={profile?.avatarUrl ?? null}
+        profileSwitch={profileSwitch}
       />
       {/* pb generoso pra conteúdo nunca ficar embaixo da barra fixa — a
           barra em si tem uns 64px de altura, + até ~34px de

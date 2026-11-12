@@ -314,18 +314,22 @@ export async function createOwnProfessionalProfile(params: {
   ctx: AuthenticatedContext;
   name: string;
   color?: string;
-  unitIds: string[];
+  /** Sem unidades informadas: entra em todas as unidades ativas. */
+  unitIds?: string[];
 }) {
   requireAdmin(params.ctx);
   const professional = await withAppContext(params.ctx, async (tx) => {
     const existing = await tx.professional.findUnique({ where: { userId: params.ctx.sessionUserId } });
     if (existing) throw new Error("Sua conta já tem cadastro de colaborador.");
+    const unitIds = params.unitIds?.length
+      ? params.unitIds
+      : (await tx.unit.findMany({ where: { active: true }, select: { id: true } })).map((u) => u.id);
     return tx.professional.create({
       data: {
         userId: params.ctx.sessionUserId,
         name: params.name,
         color: params.color ?? "#F5B301",
-        units: { create: params.unitIds.map((unitId) => ({ unitId })) },
+        units: { create: unitIds.map((unitId) => ({ unitId })) },
         // Mesmo expediente padrão da barbearia: segunda a sábado, 09h às 19h.
         weeklyAvailability: {
           create: [1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, startTime: "09:00", endTime: "19:00", active: true })),

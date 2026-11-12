@@ -34,10 +34,10 @@ function matches(pathname: string, prefixes: string[]) {
 
 export function isRouteAllowed(pathname: string, role: string | undefined): boolean {
   if (matches(pathname, ADMIN_PREFIXES)) return role === "ADMIN";
-  // ADMIN também: o admin que atende como barbeiro usa a Minha Agenda no
-  // "modo colaborador" (a página confere de novo pelo getAuthContext).
+  // ADMIN também: perfil Profissional do "Trocar perfil" (o layout confere de novo).
   if (matches(pathname, PROFESSIONAL_PREFIXES)) return role === "PROFESSIONAL" || role === "ADMIN";
-  if (matches(pathname, CLIENT_PREFIXES)) return role === "CLIENT";
+  // ADMIN e PROFESSIONAL também: perfil Cliente do "Trocar perfil" (o layout confere de novo).
+  if (matches(pathname, CLIENT_PREFIXES)) return role === "CLIENT" || role === "ADMIN" || role === "PROFESSIONAL";
   if (PUBLIC_PATHS.includes(pathname)) return true;
   return false;
 }

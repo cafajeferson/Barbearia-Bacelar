@@ -7,6 +7,7 @@ import { Home, Clock, CalendarPlus, CreditCard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NotificationBell } from "@/features/client-app/components/notification-bell";
 import { ClientUserMenu } from "@/features/client-app/components/client-user-menu";
+import { ProfileMenu, type ProfileSwitch } from "./profile-menu";
 
 const LINKS = [
   { href: "/inicio", label: "Início", icon: Home },
@@ -25,10 +26,15 @@ export function ClientNav({
   unitName,
   userName,
   userEmail,
+  avatarUrl = null,
+  profileSwitch = null,
 }: {
   unitName: string;
   userName: string | null;
   userEmail: string;
+  avatarUrl?: string | null;
+  /** Admin no perfil Cliente: troca o menu do usuário pelo menu com "Trocar perfil". */
+  profileSwitch?: ProfileSwitch | null;
 }) {
   return (
     <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur">
@@ -42,7 +48,11 @@ export function ClientNav({
         </div>
         <div className="flex items-center gap-3">
           <NotificationBell />
-          <ClientUserMenu name={userName} email={userEmail} />
+          {profileSwitch ? (
+            <ProfileMenu name={userName ?? "Admin"} email={userEmail} avatarUrl={avatarUrl} profileSwitch={profileSwitch} variant="compact" />
+          ) : (
+            <ClientUserMenu name={userName} email={userEmail} avatarUrl={avatarUrl} />
+          )}
         </div>
       </div>
     </header>

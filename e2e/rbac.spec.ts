@@ -13,8 +13,9 @@ test.describe("RBAC — acesso cruzado é bloqueado", () => {
       await page.goto("/dashboard");
       await expect(page).toHaveURL(/\/login/);
 
+      // Fora do perfil Cliente ("Trocar perfil"), o app do cliente devolve pra Minha Agenda.
       await page.goto("/inicio");
-      await expect(page).toHaveURL(/\/login/);
+      await expect(page).toHaveURL(/\/minha-agenda/);
     });
   });
 
@@ -38,8 +39,9 @@ test.describe("RBAC — acesso cruzado é bloqueado", () => {
       await page.goto("/minha-agenda");
       await expect(page).toHaveURL(/\/dashboard/);
 
+      // Idem para o app do cliente (perfil Cliente do "Trocar perfil").
       await page.goto("/inicio");
-      await expect(page).toHaveURL(/\/login/);
+      await expect(page).toHaveURL(/\/dashboard/);
     });
   });
 });

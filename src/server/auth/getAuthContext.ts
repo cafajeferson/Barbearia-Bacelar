@@ -99,39 +99,62 @@ const fetchCurrentUser = cache(async (): Promise<CurrentUser | null> => {
  * passar por aqui, nunca ler `role` direto do corpo da requisição.
  */
 /**
- * Cookie do "modo colaborador": o admin que também atende como barbeiro
- * alterna para a visão de profissional (Minha Agenda) sem trocar de conta.
- * Só REBAIXA o acesso, e só vale para quem é ADMIN no banco e tem cadastro
- * de profissional ligado à própria conta — em qualquer outra conta o cookie
- * é ignorado, então forjá-lo não dá acesso a nada.
+ * Cookie do "Trocar perfil": o admin que também atende como barbeiro, ou o
+ * barbeiro que quer agendar para si como cliente, alterna de visão sem trocar
+ * de conta. Só REBAIXA o acesso, e só vale com o cadastro correspondente
+ * (profissional / cliente) ligado à própria conta — fora disso o cookie é
+ * ignorado, então forjá-lo não dá acesso a nada.
  */
-export const PROFESSIONAL_MODE_COOKIE = "bacelar_modo";
+export const PROFILE_MODE_COOKIE = "bacelar_modo";
+export type ProfileMode = "admin" | "profissional" | "cliente";
 
-async function professionalModeOn(): Promise<boolean> {
+async function cookieMode(): Promise<ProfileMode> {
   try {
-    return (await cookies()).get(PROFESSIONAL_MODE_COOKIE)?.value === "colaborador";
+    const v = (await cookies()).get(PROFILE_MODE_COOKIE)?.value;
+    return v === "profissional" || v === "cliente" ? v : "admin";
   } catch {
-    return false; // fora de uma requisição (scripts)
+    return "admin"; // fora de uma requisição (scripts)
   }
 }
 
 /**
- * Para os menus: se a conta pode alternar entre admin e colaborador, e em
- * qual visão está agora. null = conta sem a troca (admin sem cadastro de
- * profissional, profissional comum, cliente).
+ * Para o menu de perfil ("Trocar perfil"): em qual visão está agora, para
+ * quais pode ir e quais cadastros a conta já tem.
+ * - ADMIN: Administrador, Profissional e Cliente.
+ * - PROFESSIONAL: Profissional e Cliente (agendar para si como cliente).
+ * null = cliente comum (sem troca).
  */
-export async function getRoleSwitch(): Promise<{ mode: "admin" | "colaborador" } | null> {
+export async function getRoleSwitch(): Promise<{
+  mode: ProfileMode;
+  options: ProfileMode[];
+  hasProfessional: boolean;
+  hasClient: boolean;
+} | null> {
   const fresh = await fetchCurrentUser();
-  if (!fresh || !fresh.active || fresh.role !== "ADMIN" || !fresh.professional) return null;
-  return { mode: (await professionalModeOn()) ? "colaborador" : "admin" };
+  if (!fresh || !fresh.active || (fresh.role !== "ADMIN" && fresh.role !== "PROFESSIONAL")) return null;
+  const base: ProfileMode = fresh.role === "ADMIN" ? "admin" : "profissional";
+  const options: ProfileMode[] = fresh.role === "ADMIN" ? ["admin", "profissional", "cliente"] : ["profissional", "cliente"];
+  const wanted = await cookieMode();
+  const mode =
+    (wanted === "profissional" && fresh.role === "ADMIN" && fresh.professional) || (wanted === "cliente" && fresh.client)
+      ? wanted
+      : base;
+  return { mode, options, hasProfessional: !!fresh.professional, hasClient: !!fresh.client };
 }
 
 export async function getAuthContext(): Promise<AuthenticatedContext | null> {
   const fresh = await fetchCurrentUser();
   if (!fresh || !fresh.active) return null;
 
-  if (fresh.role === "ADMIN" && fresh.professional && (await professionalModeOn())) {
-    return { role: "PROFESSIONAL", userId: fresh.professional.id, sessionUserId: fresh.id };
+  // "Trocar perfil": só rebaixa (admin -> profissional/cliente, profissional -> cliente).
+  if (fresh.role === "ADMIN" || fresh.role === "PROFESSIONAL") {
+    const mode = await cookieMode();
+    if (mode === "profissional" && fresh.role === "ADMIN" && fresh.professional) {
+      return { role: "PROFESSIONAL", userId: fresh.professional.id, sessionUserId: fresh.id };
+    }
+    if (mode === "cliente" && fresh.client) {
+      return { role: "CLIENT", userId: fresh.client.id, sessionUserId: fresh.id };
+    }
   }
 
   const userId =
@@ -151,12 +174,28 @@ export async function getCurrentUserName(): Promise<string | null> {
   return fresh.name ?? fresh.professional?.name ?? fresh.client?.name ?? null;
 }
 
-/** Nome + e-mail pra exibição (menu de perfil) — mesma consulta cacheada do getAuthContext. */
-export async function getCurrentUserProfile(): Promise<{ name: string | null; email: string } | null> {
+/**
+ * Foto da conta Google (o Supabase guarda em user_metadata no login social).
+ * Vem do próprio JWT da sessão: nenhuma ida ao banco. null para login por
+ * e-mail/senha — aí os menus mostram as iniciais.
+ */
+const fetchAvatarUrl = cache(async (): Promise<string | null> => {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const meta = (session?.user?.user_metadata ?? {}) as { avatar_url?: unknown; picture?: unknown };
+  const url = typeof meta.avatar_url === "string" ? meta.avatar_url : typeof meta.picture === "string" ? meta.picture : null;
+  return url && url.startsWith("https://") ? url : null;
+});
+
+/** Nome, e-mail e foto pra exibição (menu de perfil) — mesma consulta cacheada do getAuthContext. */
+export async function getCurrentUserProfile(): Promise<{ name: string | null; email: string; avatarUrl: string | null } | null> {
   const fresh = await fetchCurrentUser();
   if (!fresh || !fresh.active) return null;
   return {
     name: fresh.name ?? fresh.professional?.name ?? fresh.client?.name ?? null,
     email: fresh.email,
+    avatarUrl: await fetchAvatarUrl(),
   };
 }
