@@ -27,22 +27,29 @@ async function main() {
     });
     const clientIds = clients.map((c) => c.id);
     console.log(`Clientes de teste encontrados: ${clientIds.length}`);
-    if (clientIds.length === 0) return;
+    // A conta de login do e2e de cliente (cliente@bacelar.dev, "Cliente Demo")
+    // fica, mas os agendamentos que o wizard cria nela saem junto.
+    const demo = await tx.client.findMany({ where: { email: "cliente@bacelar.dev" }, select: { id: true } });
+    const appointmentOwners = [...clientIds, ...demo.map((c) => c.id)];
 
     const appointments = await tx.appointment.findMany({
-      where: { clientId: { in: clientIds } },
+      where: { clientId: { in: appointmentOwners } },
       select: { id: true },
     });
     const appointmentIds = appointments.map((a) => a.id);
     console.log(`Agendamentos de teste encontrados: ${appointmentIds.length}`);
 
     if (appointmentIds.length > 0) {
+      await tx.commissionEntry.deleteMany({ where: { appointmentId: { in: appointmentIds } } });
+      await tx.appointmentProduct.deleteMany({ where: { appointmentId: { in: appointmentIds } } });
       await tx.appointmentService.deleteMany({ where: { appointmentId: { in: appointmentIds } } });
       await tx.appointmentStatusLog.deleteMany({ where: { appointmentId: { in: appointmentIds } } });
       await tx.couponRedemption.deleteMany({ where: { appointmentId: { in: appointmentIds } } });
       await tx.subscriptionCreditUsage.deleteMany({ where: { appointmentId: { in: appointmentIds } } });
+      await tx.activityLog.deleteMany({ where: { entityType: "Appointment", entityId: { in: appointmentIds } } });
       await tx.appointment.deleteMany({ where: { id: { in: appointmentIds } } });
     }
+    if (clientIds.length === 0) return;
     await tx.recurringSeries.deleteMany({ where: { clientId: { in: clientIds } } });
     await tx.clientSubscription.deleteMany({ where: { clientId: { in: clientIds } } });
     await tx.productSale.deleteMany({ where: { clientId: { in: clientIds } } });

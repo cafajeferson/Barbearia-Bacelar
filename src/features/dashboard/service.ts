@@ -23,6 +23,13 @@ export async function getDashboardData(params: {
   const yesterday = addDays(today, -1);
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
+  // Mês escolhido na barra do topo: [periodStart, periodEnd). Sem período = todo o histórico.
+  const periodEnd = periodStart ? new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, 1) : undefined;
+  const prevStart = periodStart ? new Date(periodStart.getFullYear(), periodStart.getMonth() - 1, 1) : undefined;
+  const isCurrentMonth = !periodStart || periodStart.getTime() === monthStart.getTime();
+  // Colunas @db.Date chegam como meia-noite UTC: o filtro usa a mesma âncora.
+  const asDateCol = (d: Date) => new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+
   const unitFilter = unitId ? { unitId } : {};
   const recentRangeStart = yesterday < monthStart ? yesterday : monthStart;
 
@@ -36,7 +43,7 @@ export async function getDashboardData(params: {
     withAppContext(ctx, async (tx) => {
       const recentAppointments = await tx.appointment.findMany({
         where: { ...unitFilter, scheduledDate: { gte: recentRangeStart }, status: { not: "CANCELLED" } },
-        select: { scheduledDate: true, status: true, totalPrice: true },
+        select: { scheduledDate: true, status: true, totalPrice: true, products: { select: { quantity: true, priceAtBooking: true } } },
       });
       const upcoming = await tx.appointment.findMany({
         where: { ...unitFilter, status: { in: ["SCHEDULED", "CONFIRMED"] }, scheduledDate: { gte: today } },
@@ -49,15 +56,30 @@ export async function getDashboardData(params: {
     }),
     withAppContext(ctx, async (tx) => {
       const periodAppointments = await tx.appointment.findMany({
-        where: { ...unitFilter, scheduledDate: periodStart ? { gte: periodStart } : undefined },
-        include: { services: { include: { service: true } }, professional: true },
+        where: {
+          ...unitFilter,
+          scheduledDate: periodStart && periodEnd ? { gte: asDateCol(periodStart), lt: asDateCol(periodEnd) } : undefined,
+        },
+        include: {
+          services: { include: { service: true } },
+          products: { select: { quantity: true, priceAtBooking: true } },
+          professional: true,
+        },
       });
+      // Receita do mês anterior ao escolhido, para a comparação do cartão.
+      const previousMonth =
+        prevStart && periodStart
+          ? await tx.appointment.findMany({
+              where: { ...unitFilter, status: "COMPLETED", scheduledDate: { gte: asDateCol(prevStart), lt: asDateCol(periodStart) } },
+              select: { totalPrice: true, products: { select: { quantity: true, priceAtBooking: true } } },
+            })
+          : [];
       const allOpenAppointments = await tx.appointment.findMany({
         where: { ...unitFilter, status: { in: ["SCHEDULED", "CONFIRMED", "IN_PROGRESS"] } },
         include: { client: true, professional: true },
         orderBy: [{ scheduledDate: "asc" }, { startTime: "asc" }],
       });
-      return { periodAppointments, allOpenAppointments };
+      return { periodAppointments, allOpenAppointments, previousMonth };
     }),
     withAppContext(ctx, async (tx) => {
       // totalClients + newClientsInPeriod: mesma tabela, 1 SELECT com dois
@@ -72,21 +94,26 @@ export async function getDashboardData(params: {
       const activeProfessionals = await tx.professional.count({ where: { active: true } });
       // Painel: comissões ainda a pagar (do período escolhido, ou tudo) e
       // assinaturas ativas com a soma das mensalidades.
+      const commissionWhere = periodStart && periodEnd ? { periodMonth: { gte: asDateCol(periodStart), lt: asDateCol(periodEnd) } } : {};
       const pendingCommissions = await tx.commissionEntry.aggregate({
-        where: { status: "PENDING", periodMonth: periodStart ? { gte: periodStart } : undefined },
+        where: { status: "PENDING", ...commissionWhere },
+        _sum: { calculatedAmount: true },
+      });
+      const allCommissions = await tx.commissionEntry.aggregate({
+        where: commissionWhere,
         _sum: { calculatedAmount: true },
       });
       const activeSubs = await tx.clientSubscription.findMany({
         where: { status: "ACTIVE" },
         select: { plan: { select: { priceMonthly: true } } },
       });
-      return { clientCounts, pendingCount, activeProfessionals, pendingCommissions, activeSubs };
+      return { clientCounts, pendingCount, activeProfessionals, pendingCommissions, allCommissions, activeSubs };
     }),
   ]);
 
   const { recentAppointments, upcoming, recentActivity } = groupA;
-  const { periodAppointments, allOpenAppointments } = groupB;
-  const { clientCounts, pendingCount, activeProfessionals, pendingCommissions, activeSubs } = groupC;
+  const { periodAppointments, allOpenAppointments, previousMonth } = groupB;
+  const { clientCounts, pendingCount, activeProfessionals, pendingCommissions, allCommissions, activeSubs } = groupC;
 
   {
     const dayKey = (d: Date) => d.toISOString().slice(0, 10);
@@ -110,14 +137,42 @@ export async function getDashboardData(params: {
     const totalClients = Number(clientCounts[0]?.total ?? 0);
     const newClientsInPeriod = Number(clientCounts[0]?.new_in_period ?? 0);
 
-    const sumPrice = (rows: { totalPrice: unknown }[]) =>
-      rows.reduce((sum, r) => sum + Number(r.totalPrice), 0);
+    // Receita = serviços (totalPrice) + produtos levados no atendimento.
+    const revenueOf = (r: { totalPrice: unknown; products: { quantity: number; priceAtBooking: unknown }[] }) =>
+      Number(r.totalPrice) + r.products.reduce((s, p) => s + p.quantity * Number(p.priceAtBooking), 0);
+    const sumPrice = (rows: Parameters<typeof revenueOf>[0][]) => rows.reduce((sum, r) => sum + revenueOf(r), 0);
 
     const revenueToday = sumPrice(completedToday);
     const revenueYesterday = sumPrice(completedYesterday);
     const revenueMonth = sumPrice(completedMonth);
     const revenueChangePct =
       revenueYesterday > 0 ? ((revenueToday - revenueYesterday) / revenueYesterday) * 100 : null;
+
+    const completedPeriod = periodAppointments.filter((a) => a.status === "COMPLETED");
+    const revenuePeriod = sumPrice(completedPeriod);
+    const revenuePrevious = sumPrice(previousMonth);
+    const productsRevenuePeriod = completedPeriod.reduce((sum, a) => sum + revenueOf(a) - Number(a.totalPrice), 0);
+    const appointmentsPeriod = periodAppointments.filter((a) => a.status !== "CANCELLED").length;
+
+    // Faturamento para o gráfico: dia a dia no mês escolhido, ou mês a mês em "Todos os meses".
+    const series: { label: string; value: number }[] = [];
+    if (periodStart && periodEnd) {
+      const days = Math.round((periodEnd.getTime() - periodStart.getTime()) / 86_400_000);
+      const byDay = new Array<number>(days).fill(0);
+      for (const a of completedPeriod) byDay[a.scheduledDate.getUTCDate() - 1] += revenueOf(a);
+      byDay.forEach((value, i) => series.push({ label: String(i + 1).padStart(2, "0"), value: Math.round(value) }));
+    } else {
+      const byMonth = new Map<string, number>();
+      for (const a of completedPeriod) {
+        const key = a.scheduledDate.toISOString().slice(0, 7);
+        byMonth.set(key, (byMonth.get(key) ?? 0) + revenueOf(a));
+      }
+      for (const key of Array.from(byMonth.keys()).sort()) {
+        const [y, m] = key.split("-").map(Number);
+        const label = new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(new Date(y, m - 1, 1)).replace(".", "");
+        series.push({ label: `${label}/${String(y).slice(2)}`, value: Math.round(byMonth.get(key) ?? 0) });
+      }
+    }
 
     const noShowInPeriod = periodAppointments.filter((a) => a.status === "NO_SHOW").length;
     const noShowRate =
@@ -173,15 +228,29 @@ export async function getDashboardData(params: {
         pendingCount,
         noShowRate,
       },
+      // Mês escolhido na barra do topo (null = "Todos os meses").
+      period: periodStart
+        ? {
+            isCurrentMonth,
+            revenue: revenuePeriod,
+            productsRevenue: productsRevenuePeriod,
+            revenueChangePct: revenuePrevious > 0 ? ((revenuePeriod - revenuePrevious) / revenuePrevious) * 100 : null,
+            appointments: appointmentsPeriod,
+            completed: completedPeriod.length,
+            averageTicket: completedPeriod.length ? revenuePeriod / completedPeriod.length : 0,
+          }
+        : null,
       painel: {
         totalClients,
         newClientsInPeriod,
         activeProfessionals,
-        commissionsInPeriod: Number(pendingCommissions._sum.calculatedAmount ?? 0),
+        commissionsInPeriod: Number(allCommissions._sum.calculatedAmount ?? 0),
+        commissionsPending: Number(pendingCommissions._sum.calculatedAmount ?? 0),
         mrr: activeSubs.reduce((sum, s) => sum + Number(s.plan.priceMonthly), 0),
         activeSubscriptions: activeSubs.length,
         cancellationsInPeriod,
       },
+      series,
       upcoming,
       ranking,
       popularServices,

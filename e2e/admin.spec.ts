@@ -23,8 +23,9 @@ test.describe("Admin — fluxos principais", () => {
   test("dashboard mostra KPIs", async ({ page }) => {
     await page.goto("/dashboard");
     await expect(page.getByRole("heading", { name: /Bom dia|Boa tarde|Boa noite/ })).toBeVisible();
-    await expect(page.getByText("Receita")).toBeVisible();
-    await expect(page.getByText("Agendamentos")).toBeVisible();
+    await expect(page.getByText("Receita de hoje", { exact: true })).toBeVisible();
+    await expect(page.getByText("Agendamentos hoje", { exact: true })).toBeVisible();
+    await expect(page.getByText("Faturamento", { exact: true })).toBeVisible();
   });
 
   test("Agenda Mestre: cria um agendamento walk-in", async ({ page }) => {

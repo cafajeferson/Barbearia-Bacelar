@@ -11,61 +11,64 @@ const config: Config = {
   ],
   theme: {
   	extend: {
+  		// Cores com '/ <alpha-value>' aceitam opacidade (bg-primary/10 etc.); sem isso o Tailwind
+  		// não gerava nenhuma classe com '/NN'. --border, --input e --sidebar-border já trazem
+  		// a própria transparência no CSS e ficam sem o modificador.
   		colors: {
-  			background: 'oklch(var(--background))',
-  			foreground: 'oklch(var(--foreground))',
+  			background: 'oklch(var(--background) / <alpha-value>)',
+  			foreground: 'oklch(var(--foreground) / <alpha-value>)',
   			card: {
-  				DEFAULT: 'oklch(var(--card))',
-  				foreground: 'oklch(var(--card-foreground))'
+  				DEFAULT: 'oklch(var(--card) / <alpha-value>)',
+  				foreground: 'oklch(var(--card-foreground) / <alpha-value>)'
   			},
   			popover: {
-  				DEFAULT: 'oklch(var(--popover))',
-  				foreground: 'oklch(var(--popover-foreground))'
+  				DEFAULT: 'oklch(var(--popover) / <alpha-value>)',
+  				foreground: 'oklch(var(--popover-foreground) / <alpha-value>)'
   			},
   			primary: {
-  				DEFAULT: 'oklch(var(--primary))',
-  				foreground: 'oklch(var(--primary-foreground))'
+  				DEFAULT: 'oklch(var(--primary) / <alpha-value>)',
+  				foreground: 'oklch(var(--primary-foreground) / <alpha-value>)'
   			},
   			secondary: {
-  				DEFAULT: 'oklch(var(--secondary))',
-  				foreground: 'oklch(var(--secondary-foreground))'
+  				DEFAULT: 'oklch(var(--secondary) / <alpha-value>)',
+  				foreground: 'oklch(var(--secondary-foreground) / <alpha-value>)'
   			},
   			muted: {
-  				DEFAULT: 'oklch(var(--muted))',
-  				foreground: 'oklch(var(--muted-foreground))'
+  				DEFAULT: 'oklch(var(--muted) / <alpha-value>)',
+  				foreground: 'oklch(var(--muted-foreground) / <alpha-value>)'
   			},
   			accent: {
-  				DEFAULT: 'oklch(var(--accent))',
-  				foreground: 'oklch(var(--accent-foreground))'
+  				DEFAULT: 'oklch(var(--accent) / <alpha-value>)',
+  				foreground: 'oklch(var(--accent-foreground) / <alpha-value>)'
   			},
-  			destructive: 'oklch(var(--destructive))',
+  			destructive: 'oklch(var(--destructive) / <alpha-value>)',
   			border: 'oklch(var(--border))',
   			input: 'oklch(var(--input))',
-  			ring: 'oklch(var(--ring))',
+  			ring: 'oklch(var(--ring) / <alpha-value>)',
   			success: {
-  				DEFAULT: 'oklch(var(--success))',
-  				foreground: 'oklch(var(--success-foreground))'
+  				DEFAULT: 'oklch(var(--success) / <alpha-value>)',
+  				foreground: 'oklch(var(--success-foreground) / <alpha-value>)'
   			},
   			warning: {
-  				DEFAULT: 'oklch(var(--warning))',
-  				foreground: 'oklch(var(--warning-foreground))'
+  				DEFAULT: 'oklch(var(--warning) / <alpha-value>)',
+  				foreground: 'oklch(var(--warning-foreground) / <alpha-value>)'
   			},
   			chart: {
-  				'1': 'oklch(var(--chart-1))',
-  				'2': 'oklch(var(--chart-2))',
-  				'3': 'oklch(var(--chart-3))',
-  				'4': 'oklch(var(--chart-4))',
-  				'5': 'oklch(var(--chart-5))'
+  				'1': 'oklch(var(--chart-1) / <alpha-value>)',
+  				'2': 'oklch(var(--chart-2) / <alpha-value>)',
+  				'3': 'oklch(var(--chart-3) / <alpha-value>)',
+  				'4': 'oklch(var(--chart-4) / <alpha-value>)',
+  				'5': 'oklch(var(--chart-5) / <alpha-value>)'
   			},
   			sidebar: {
-  				DEFAULT: 'oklch(var(--sidebar))',
-  				foreground: 'oklch(var(--sidebar-foreground))',
-  				primary: 'oklch(var(--sidebar-primary))',
-  				'primary-foreground': 'oklch(var(--sidebar-primary-foreground))',
-  				accent: 'oklch(var(--sidebar-accent))',
-  				'accent-foreground': 'oklch(var(--sidebar-accent-foreground))',
+  				DEFAULT: 'oklch(var(--sidebar) / <alpha-value>)',
+  				foreground: 'oklch(var(--sidebar-foreground) / <alpha-value>)',
+  				primary: 'oklch(var(--sidebar-primary) / <alpha-value>)',
+  				'primary-foreground': 'oklch(var(--sidebar-primary-foreground) / <alpha-value>)',
+  				accent: 'oklch(var(--sidebar-accent) / <alpha-value>)',
+  				'accent-foreground': 'oklch(var(--sidebar-accent-foreground) / <alpha-value>)',
   				border: 'oklch(var(--sidebar-border))',
-  				ring: 'oklch(var(--sidebar-ring))'
+  				ring: 'oklch(var(--sidebar-ring) / <alpha-value>)'
   			}
   		},
   		borderRadius: {
