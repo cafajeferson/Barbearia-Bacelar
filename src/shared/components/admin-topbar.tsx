@@ -36,12 +36,27 @@ export function AdminTopbar({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const period = searchParams.get("period") ?? "all";
+  // Relatórios têm controles de período próprios (periodo/data/de/ate): lá o
+  // rótulo do topo acompanha o mês que o relatório está mostrando.
+  const isReports = pathname.startsWith("/relatorios");
+  const reportMonth =
+    isReports && (searchParams.get("periodo") ?? "mes") === "mes" ? (searchParams.get("data") ?? "").slice(0, 7) : "";
+  const period = searchParams.get("period") ?? (/^\d{4}-\d{2}$/.test(reportMonth) ? reportMonth : "all");
   const unit = searchParams.get("unit") ?? "all";
   const monthOptions = useMemo(buildMonthOptions, []);
 
   function updateParam(key: string, value: string, extraDeletes: string[] = []) {
     const params = new URLSearchParams(searchParams.toString());
+    // Nos Relatórios, escolher um mês no topo = relatório "Mês" daquele mês
+    // (aba Clientes usa de/ate: o mês inteiro).
+    if (isReports && key === "period" && /^\d{4}-\d{2}$/.test(value)) {
+      const [y, m] = value.split("-").map(Number);
+      const last = new Date(y, m, 0).getDate();
+      params.set("periodo", "mes");
+      params.set("data", `${value}-01`);
+      params.set("de", `${value}-01`);
+      params.set("ate", `${value}-${String(last).padStart(2, "0")}`);
+    }
     if (value === "all") params.delete(key);
     else params.set(key, value);
     for (const k of extraDeletes) params.delete(k);
